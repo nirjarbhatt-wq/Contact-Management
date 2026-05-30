@@ -91,3 +91,18 @@
 - [x] Recent uploads feed (last 10 contacts added by any user)
 - [x] Top regions bar chart and uploads-by-user bar chart
 - [x] Import CSV added to sidebar navigation
+
+## Phase 4 - Upcoming Enhancements
+
+### Dashboard CSV Export
+- [x] Add "Export CSV" button to Dashboard header that downloads all contacts as CSV
+- [x] Button is visible in the dashboard quick-actions row, fetches all pages and triggers download
+
+### Contact Detail Side Panel
+- [ ] Clicking a contact row in All Contacts or Dashboard recent feed opens a slide-over drawer
+- [ ] Drawer shows all fields, full metadata, notes, and audit history for that contact
+- [ ] Inline edit form inside the drawer
+
+### Owner Notifications
+- [ ] Wire notifyOwner() into contacts upload procedure
+- [ ] Notify owner when team member uploads or imports contacts

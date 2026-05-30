@@ -17,8 +17,10 @@ import {
   Area,
   AreaChart,
 } from "recharts";
-import { Users, Phone, TrendingUp, Calendar, Clock, Upload, Download, List } from "lucide-react";
+import { Users, Phone, TrendingUp, Calendar, Clock, Upload, Download, List, FileDown } from "lucide-react";
 import { useLocation } from "wouter";
+import { useState } from "react";
+import { toast } from "sonner";
 
 const COLORS = ["#6366f1", "#8b5cf6", "#a78bfa", "#c4b5fd", "#ddd6fe"];
 
@@ -53,9 +55,33 @@ function StatCard({
   );
 }
 
+function exportContactsToCSV(contacts: any[]) {
+  const headers = ["Name", "Phone", "Email", "Region", "Vendor Sub-Cat", "Client Sub-Cat", "Consultant Sub-Cat", "Source", "Uploaded By", "Date"];
+  const rows = contacts.map(c => {
+    let phones = ""; try { phones = JSON.parse(c.phoneNumbers ?? "[]").join("; "); } catch { /* ignore */ }
+    let emails = ""; try { emails = JSON.parse(c.emails ?? "[]").join("; "); } catch { /* ignore */ }
+    return [
+      c.displayName, phones, emails,
+      c.regionName ?? "", c.vendorSubcategoryName ?? "", c.clientSubcategoryName ?? "",
+      c.consultantSubcategoryName ?? "", c.sourceName ?? "", c.uploaderName ?? "",
+      new Date(c.createdAt).toLocaleDateString("en-IN"),
+    ];
+  });
+  const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `all-contacts-${new Date().toISOString().split("T")[0]}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function Dashboard() {
   const { data, isLoading } = trpc.reports.dashboard.useQuery();
   const [, navigate] = useLocation();
+  const [exporting, setExporting] = useState(false);
+  const utils = trpc.useUtils();
 
   if (isLoading) {
     return (
@@ -102,6 +128,31 @@ export default function Dashboard() {
           </Button>
           <Button size="sm" variant="outline" className="gap-1.5" onClick={() => navigate("/all-contacts")}>
             <List className="h-3.5 w-3.5" /> View All
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            disabled={exporting}
+            onClick={async () => {
+              setExporting(true);
+              try {
+                const all = await utils.contacts.exportAll.fetch();
+                if (!all || all.length === 0) { toast.info("No contacts to export."); return; }
+                exportContactsToCSV(all);
+                toast.success(`Exported ${all.length} contacts to CSV.`);
+              } catch {
+                toast.error("Export failed. Please try again.");
+              } finally {
+                setExporting(false);
+              }
+            }}
+          >
+            {exporting ? (
+              <><div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" /> Exporting…</>
+            ) : (
+              <><FileDown className="h-3.5 w-3.5" /> Export CSV</>
+            )}
           </Button>
         </div>
       </div>

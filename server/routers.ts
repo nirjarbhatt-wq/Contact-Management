@@ -119,6 +119,12 @@ const contactsRouter = router({
     return getContacts(filters);
   }),
 
+  // Export all contacts without pagination — for CSV download
+  exportAll: protectedProcedure.query(async () => {
+    const result = await getContacts({ page: 1, pageSize: 5000 });
+    return result.contacts;
+  }),
+
   upload: protectedProcedure.input(z.array(z.object({
     displayName: z.string().min(1),
     firstName: z.string().optional(),
