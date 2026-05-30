@@ -5,6 +5,7 @@ import { useMetadata } from "@/hooks/useMetadata";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -13,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Phone, Mail, Search, Pencil, Trash2, ContactRound, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { Phone, Mail, Search, Pencil, Trash2, ContactRound, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
 
 type ContactRow = {
   id: number;
@@ -75,7 +76,6 @@ function EditDialog({ contact, onClose }: { contact: ContactRow; onClose: () => 
   const metadata = useMetadata();
   const utils = trpc.useUtils();
 
-  // Derive initial selectedCategory from the stored contact data
   const initCategory = (): "vendor" | "client" | "consultant" | undefined => {
     if (contact.vendorSubcategoryId || contact.vendorCategoryId) return "vendor";
     if (contact.clientSubcategoryId || contact.clientCategoryId) return "client";
@@ -113,7 +113,6 @@ function EditDialog({ contact, onClose }: { contact: ContactRow; onClose: () => 
     ? metadata.subcategories.filter(s => s.categoryId === activeCategoryObj.id)
     : [];
 
-  // Build the backend payload from the simplified form state
   const buildPayload = () => ({
     id: contact.id,
     regionId: form.regionId,
@@ -150,7 +149,6 @@ function EditDialog({ contact, onClose }: { contact: ContactRow; onClose: () => 
           <p className="text-sm text-muted-foreground">{contact.displayName}</p>
         </DialogHeader>
         <div className="space-y-3 py-2">
-          {/* Region */}
           <div className="space-y-1.5">
             <Label className="text-xs">Region</Label>
             <Select value={form.regionId?.toString() ?? ""} onValueChange={v => setForm(f => ({ ...f, regionId: v ? Number(v) : undefined }))}>
@@ -165,7 +163,6 @@ function EditDialog({ contact, onClose }: { contact: ContactRow; onClose: () => 
               </SelectContent>
             </Select>
           </div>
-          {/* Category radio + scoped sub-category */}
           <div className="rounded-lg border p-3 space-y-3">
             <Label className="text-xs font-medium">Category</Label>
             <div className="flex gap-2 flex-wrap">
@@ -232,7 +229,6 @@ function EditDialog({ contact, onClose }: { contact: ContactRow; onClose: () => 
               </div>
             )}
           </div>
-          {/* Source */}
           <div className="space-y-1.5">
             <Label className="text-xs">Source of Contact</Label>
             <Select value={form.contactSourceId?.toString() ?? ""} onValueChange={v => setForm(f => ({ ...f, contactSourceId: v ? Number(v) : undefined }))}>
@@ -243,8 +239,6 @@ function EditDialog({ contact, onClose }: { contact: ContactRow; onClose: () => 
               </SelectContent>
             </Select>
           </div>
-
-          {/* Notes */}
           <div className="space-y-1.5">
             <Label className="text-xs">Notes</Label>
             <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} className="resize-none text-sm" />
@@ -266,6 +260,8 @@ export default function MyUploads() {
   const [page, setPage] = useState(1);
   const [editContact, setEditContact] = useState<ContactRow | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [showBulkDelete, setShowBulkDelete] = useState(false);
   const utils = trpc.useUtils();
 
   const { data, isLoading } = trpc.contacts.list.useQuery({
@@ -284,9 +280,36 @@ export default function MyUploads() {
     onError: () => toast.error("Delete failed"),
   });
 
+  const bulkDeleteMutation = trpc.contacts.bulkDelete.useMutation({
+    onSuccess: (res) => {
+      toast.success(`Deleted ${res.deleted} contacts`);
+      utils.contacts.list.invalidate();
+      utils.reports.dashboard.invalidate();
+      setSelectedIds(new Set());
+      setShowBulkDelete(false);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   const contacts = (data?.contacts ?? []) as ContactRow[];
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / 15);
+
+  const toggleRow = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selectedIds.size === contacts.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(contacts.map(c => c.id)));
+    }
+  };
 
   return (
     <div className="space-y-5">
@@ -294,6 +317,21 @@ export default function MyUploads() {
         <h1 className="text-2xl font-bold font-display">My Uploads</h1>
         <p className="text-muted-foreground text-sm mt-1">Contacts you have uploaded. Edit or delete as needed.</p>
       </div>
+
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2.5">
+          <span className="text-sm font-medium text-red-300">{selectedIds.size} selected</span>
+          <div className="ml-auto flex gap-2">
+            <Button size="sm" variant="outline" className="gap-1.5 border-red-500/40 text-red-400 hover:bg-red-500/20" onClick={() => setShowBulkDelete(true)}>
+              <Trash2 className="h-3.5 w-3.5" /> Delete Selected
+            </Button>
+            <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => setSelectedIds(new Set())}>
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       <Card className="shadow-sm">
         <CardHeader className="pb-3">
@@ -310,6 +348,12 @@ export default function MyUploads() {
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
+                  <TableHead className="w-10 px-3">
+                    <Checkbox
+                      checked={contacts.length > 0 && selectedIds.size === contacts.length}
+                      onCheckedChange={toggleAll}
+                    />
+                  </TableHead>
                   <TableHead className="text-xs">Name</TableHead>
                   <TableHead className="text-xs">Phone / Email</TableHead>
                   <TableHead className="text-xs">Region</TableHead>
@@ -323,16 +367,19 @@ export default function MyUploads() {
               <TableBody>
                 {isLoading && Array.from({ length: 5 }).map((_, i) => (
                   <TableRow key={i}>
-                    {Array.from({ length: 8 }).map((_, j) => (
+                    {Array.from({ length: 9 }).map((_, j) => (
                       <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                     ))}
                   </TableRow>
                 ))}
                 {!isLoading && contacts.map(c => {
-                  const phones = c.phoneNumbers ? JSON.parse(c.phoneNumbers) as string[] : [];
-                  const emails = c.emails ? JSON.parse(c.emails) as string[] : [];
+                  let phones: string[] = []; try { phones = JSON.parse(c.phoneNumbers ?? "[]"); } catch { /* ignore */ }
+                  let emails: string[] = []; try { emails = JSON.parse(c.emails ?? "[]"); } catch { /* ignore */ }
                   return (
-                    <TableRow key={c.id} className="hover:bg-muted/30">
+                    <TableRow key={c.id} className={`hover:bg-muted/30 ${selectedIds.has(c.id) ? "bg-red-500/5" : ""}`}>
+                      <TableCell className="px-3">
+                        <Checkbox checked={selectedIds.has(c.id)} onCheckedChange={() => toggleRow(c.id)} />
+                      </TableCell>
                       <TableCell className="font-medium text-sm py-3">{c.displayName}</TableCell>
                       <TableCell className="py-3">
                         <div className="space-y-0.5">
@@ -360,7 +407,7 @@ export default function MyUploads() {
                 })}
                 {!isLoading && contacts.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-12">
+                    <TableCell colSpan={9} className="text-center py-12">
                       <ContactRound className="w-10 h-10 text-muted-foreground/30 mx-auto mb-2" />
                       <p className="text-sm text-muted-foreground">No contacts uploaded yet</p>
                     </TableCell>
@@ -387,6 +434,7 @@ export default function MyUploads() {
 
       {editContact && <EditDialog contact={editContact} onClose={() => setEditContact(null)} />}
 
+      {/* Single delete */}
       <AlertDialog open={deleteId !== null} onOpenChange={v => !v && setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -397,6 +445,27 @@ export default function MyUploads() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={() => deleteId && deleteMutation.mutate({ id: deleteId })} className="bg-destructive hover:bg-destructive/90">
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk delete */}
+      <AlertDialog open={showBulkDelete} onOpenChange={setShowBulkDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedIds.size} contact{selectedIds.size > 1 ? "s" : ""}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. All selected contacts will be permanently deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => bulkDeleteMutation.mutate({ ids: Array.from(selectedIds) })}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {bulkDeleteMutation.isPending ? "Deleting…" : "Delete All"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

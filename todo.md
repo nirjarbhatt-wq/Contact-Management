@@ -62,3 +62,32 @@
 ## Category Selection Fix
 - [x] Change Vendor/Client/Consultant from always-visible sections to a radio button group — user selects ONE category, then picks a sub-category under it
 - [x] Update MyUploads edit form with the same radio-select pattern
+
+## New Features (Phase 3)
+
+### Duplicate Detection
+- [x] On contact upload, check for existing phone/email matches in the database (contacts.checkDuplicates tRPC procedure)
+- [x] Show a warning dialog listing duplicates before confirming upload
+- [x] Allow user to skip duplicates or upload anyway
+
+### Phonetic Matching Search
+- [x] Implement server-side phonetic/fuzzy search using Soundex algorithm
+- [x] Update All Contacts search to use phonetic matching (phoneticSearch toggle checkbox)
+- [x] Phonetic toggle shown next to search bar in AllContacts page
+
+### Bulk Edit
+- [x] Add checkboxes to All Contacts and My Uploads tables
+- [x] Bulk edit dialog: change Region, Source, Vendor/Client/Consultant Sub-Category for selected contacts
+- [x] Bulk delete for all users (own contacts) and admins
+
+### CSV Import / Export
+- [x] CSV import: upload a CSV file with contacts (name, phone, email) + metadata columns
+- [x] CSV import: validate, preview, and confirm before saving (ImportContacts.tsx page)
+- [x] CSV export: already exists for All Contacts; includes all metadata columns
+
+### Dashboard Homepage
+- [x] New Dashboard.tsx as home page (/ and /dashboard routes)
+- [x] Summary cards: total contacts, this week, this month, active users
+- [x] Recent uploads feed (last 10 contacts added by any user)
+- [x] Top regions bar chart and uploads-by-user bar chart
+- [x] Import CSV added to sidebar navigation

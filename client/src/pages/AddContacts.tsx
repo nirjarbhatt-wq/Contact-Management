@@ -10,6 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -327,6 +329,12 @@ function MetadataForm({
 // ─── Main Page ────────────────────────────────────────────────────────────────
 type Step = "browse" | "metadata" | "review";
 
+type DuplicateResult = {
+  displayName: string;
+  existingName: string;
+  matchType: string;
+};
+
 export default function AddContacts() {
   const metadata = useMetadata();
   const [step, setStep] = useState<Step>("browse");
@@ -334,6 +342,9 @@ export default function AddContacts() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [metadataMap, setMetadataMap] = useState<Record<string, ContactMetadata>>({});
   const [metaIdx, setMetaIdx] = useState(0);
+  const [duplicates, setDuplicates] = useState<DuplicateResult[]>([]);
+  const [showDupDialog, setShowDupDialog] = useState(false);
+  const [pendingPayload, setPendingPayload] = useState<any[] | null>(null);
 
   const uploadMutation = trpc.contacts.upload.useMutation();
   const utils = trpc.useUtils();
@@ -362,56 +373,122 @@ export default function AddContacts() {
     setStep("metadata");
   };
 
-  const handleUpload = async () => {
+  const buildPayload = () => selectedContacts.map(c => {
+    const meta = metadataMap[c.id] ?? {};
+    const vendorCategoryId =
+      meta.selectedCategory === "vendor" && metadata.vendorCategory
+        ? metadata.vendorCategory.id : undefined;
+    const vendorSubcategoryId =
+      meta.selectedCategory === "vendor" ? meta.subcategoryId : undefined;
+    const clientCategoryId =
+      meta.selectedCategory === "client" && metadata.clientCategory
+        ? metadata.clientCategory.id : undefined;
+    const clientSubcategoryId =
+      meta.selectedCategory === "client" ? meta.subcategoryId : undefined;
+    const consultantCategoryId =
+      meta.selectedCategory === "consultant" && metadata.consultantCategory
+        ? metadata.consultantCategory.id : undefined;
+    const consultantSubcategoryId =
+      meta.selectedCategory === "consultant" ? meta.subcategoryId : undefined;
+    return {
+      displayName: c.displayName,
+      firstName: c.firstName,
+      lastName: c.lastName,
+      phoneNumbers: c.phoneNumbers,
+      emails: c.emails,
+      regionId: meta.regionId,
+      vendorCategoryId,
+      vendorSubcategoryId,
+      clientCategoryId,
+      clientSubcategoryId,
+      consultantCategoryId,
+      consultantSubcategoryId,
+      contactSourceId: meta.contactSourceId,
+      notes: meta.notes,
+    };
+  });
+
+  const doUpload = async (payload: ReturnType<typeof buildPayload>) => {
     try {
-      const payload = selectedContacts.map(c => {
-        const meta = metadataMap[c.id] ?? {};
-        // Resolve which category IDs to send based on the selected radio
-        const vendorCategoryId =
-          meta.selectedCategory === "vendor" && metadata.vendorCategory
-            ? metadata.vendorCategory.id : undefined;
-        const vendorSubcategoryId =
-          meta.selectedCategory === "vendor" ? meta.subcategoryId : undefined;
-        const clientCategoryId =
-          meta.selectedCategory === "client" && metadata.clientCategory
-            ? metadata.clientCategory.id : undefined;
-        const clientSubcategoryId =
-          meta.selectedCategory === "client" ? meta.subcategoryId : undefined;
-        const consultantCategoryId =
-          meta.selectedCategory === "consultant" && metadata.consultantCategory
-            ? metadata.consultantCategory.id : undefined;
-        const consultantSubcategoryId =
-          meta.selectedCategory === "consultant" ? meta.subcategoryId : undefined;
-        return {
-          displayName: c.displayName,
-          firstName: c.firstName,
-          lastName: c.lastName,
-          phoneNumbers: c.phoneNumbers,
-          emails: c.emails,
-          regionId: meta.regionId,
-          vendorCategoryId,
-          vendorSubcategoryId,
-          clientCategoryId,
-          clientSubcategoryId,
-          consultantCategoryId,
-          consultantSubcategoryId,
-          contactSourceId: meta.contactSourceId,
-          notes: meta.notes,
-        };
-      });
       await uploadMutation.mutateAsync(payload);
       await utils.contacts.list.invalidate();
+      await utils.reports.dashboard.invalidate();
       toast.success(`${payload.length} contact${payload.length > 1 ? "s" : ""} uploaded successfully!`);
       setSelected(new Set());
       setMetadataMap({});
       setStep("browse");
+      setShowDupDialog(false);
+      setPendingPayload(null);
     } catch {
       toast.error("Upload failed. Please try again.");
     }
   };
 
+  const handleUpload = async () => {
+    const payload = buildPayload();
+    // Collect all phone numbers and emails to check for duplicates
+    const allPhones = payload.flatMap(c => c.phoneNumbers);
+    const allEmails = payload.flatMap(c => c.emails);
+    try {
+      const dups = await utils.contacts.checkDuplicates.fetch({ phoneNumbers: allPhones, emails: allEmails });
+      if (dups.length > 0) {
+        // Map duplicates back to the contact names in our payload
+        const dupResults: DuplicateResult[] = dups.map((d: any) => ({
+          displayName: d.contactName ?? "Unknown",
+          existingName: d.existingName ?? d.contactName ?? "Unknown",
+          matchType: d.matchType ?? "phone/email match",
+        }));
+        setDuplicates(dupResults);
+        setPendingPayload(payload);
+        setShowDupDialog(true);
+      } else {
+        await doUpload(payload);
+      }
+    } catch {
+      // If duplicate check fails, proceed with upload anyway
+      await doUpload(payload);
+    }
+  };
+
   return (
     <div className="max-w-2xl mx-auto space-y-5">
+      {/* Duplicate Warning Dialog */}
+      <AlertDialog open={showDupDialog} onOpenChange={setShowDupDialog}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Possible Duplicates Found
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div>
+                <p className="text-sm text-muted-foreground mb-3">
+                  {duplicates.length} contact{duplicates.length > 1 ? "s" : ""} may already exist in the database.
+                </p>
+                <div className="space-y-1.5 max-h-40 overflow-y-auto rounded-lg border p-2 bg-muted/30">
+                  {duplicates.map((d, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs px-2 py-1.5 rounded bg-background">
+                      <span className="font-medium">{d.displayName}</span>
+                      <span className="text-muted-foreground">{d.matchType}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground mt-3">You can skip duplicates or upload anyway to create new entries.</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-amber-600 hover:bg-amber-700"
+              onClick={() => pendingPayload && doUpload(pendingPayload)}
+            >
+              Upload Anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold font-display">Add Contacts</h1>

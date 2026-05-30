@@ -4,21 +4,30 @@ import { useMetadata } from "@/hooks/useMetadata";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Phone, Mail, Search, Download, Filter, X, Users, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Phone, Mail, Search, Download, Filter, X, Users, ChevronLeft, ChevronRight, Pencil, Trash2, AudioWaveform } from "lucide-react";
+import { toast } from "sonner";
 
 function exportToCSV(contacts: any[]) {
   const headers = ["Name", "Phone", "Email", "Region", "Vendor", "Client", "Consultant", "Source", "Uploaded By", "Date"];
   const rows = contacts.map(c => {
-    const phones = c.phoneNumbers ? JSON.parse(c.phoneNumbers).join("; ") : "";
-    const emails = c.emails ? JSON.parse(c.emails).join("; ") : "";
+    let phones = ""; try { phones = JSON.parse(c.phoneNumbers ?? "[]").join("; "); } catch { /* ignore */ }
+    let emails = ""; try { emails = JSON.parse(c.emails ?? "[]").join("; "); } catch { /* ignore */ }
     return [
       c.displayName, phones, emails,
-      c.regionName ?? "", c.vendorName ?? "", c.clientName ?? "",
-      c.consultantName ?? "", c.sourceName ?? "", c.uploaderName ?? "",
+      c.regionName ?? "", c.vendorSubcategoryName ?? "", c.clientSubcategoryName ?? "",
+      c.consultantSubcategoryName ?? "", c.sourceName ?? "", c.uploaderName ?? "",
       new Date(c.createdAt).toLocaleDateString("en-IN"),
     ];
   });
@@ -35,32 +44,90 @@ function exportToCSV(contacts: any[]) {
 export default function AllContacts() {
   const metadata = useMetadata();
   const [search, setSearch] = useState("");
+  const [phoneticSearch, setPhoneticSearch] = useState(false);
   const [filters, setFilters] = useState<{
     regionId?: number; vendorSubcategoryId?: number; clientSubcategoryId?: number;
     consultantSubcategoryId?: number; contactSourceId?: number;
   }>({});
   const [page, setPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [showBulkEdit, setShowBulkEdit] = useState(false);
+  const [showBulkDelete, setShowBulkDelete] = useState(false);
+  const [bulkEditData, setBulkEditData] = useState<{
+    regionId?: number; contactSourceId?: number;
+    vendorSubcategoryId?: number; clientSubcategoryId?: number; consultantSubcategoryId?: number;
+  }>({});
+
+  const utils = trpc.useUtils();
 
   const { data, isLoading } = trpc.contacts.list.useQuery({
     search: search || undefined,
+    phoneticSearch: phoneticSearch && !!search,
     ...filters,
     page,
     pageSize: 20,
   }, { keepPreviousData: true } as any);
 
+  const bulkUpdateMutation = trpc.contacts.bulkUpdate.useMutation({
+    onSuccess: (res) => {
+      toast.success(`Updated ${res.updated} contacts`);
+      utils.contacts.list.invalidate();
+      setSelectedIds(new Set());
+      setShowBulkEdit(false);
+      setBulkEditData({});
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const bulkDeleteMutation = trpc.contacts.bulkDelete.useMutation({
+    onSuccess: (res) => {
+      toast.success(`Deleted ${res.deleted} contacts`);
+      utils.contacts.list.invalidate();
+      utils.reports.dashboard.invalidate();
+      setSelectedIds(new Set());
+      setShowBulkDelete(false);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
   const contacts = data?.contacts ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / 20);
-
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
 
   const clearFilters = () => { setFilters({}); setPage(1); };
-
   const setFilter = useCallback((key: string, value: number | undefined) => {
     setFilters(f => ({ ...f, [key]: value }));
     setPage(1);
   }, []);
+
+  const toggleRow = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selectedIds.size === contacts.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(contacts.map((c: any) => c.id)));
+    }
+  };
+
+  const handleBulkEdit = () => {
+    const ids = Array.from(selectedIds);
+    const payload: any = { ids };
+    if (bulkEditData.regionId) payload.regionId = bulkEditData.regionId;
+    if (bulkEditData.contactSourceId) payload.contactSourceId = bulkEditData.contactSourceId;
+    if (bulkEditData.vendorSubcategoryId) payload.vendorSubcategoryId = bulkEditData.vendorSubcategoryId;
+    if (bulkEditData.clientSubcategoryId) payload.clientSubcategoryId = bulkEditData.clientSubcategoryId;
+    if (bulkEditData.consultantSubcategoryId) payload.consultantSubcategoryId = bulkEditData.consultantSubcategoryId;
+    bulkUpdateMutation.mutate(payload);
+  };
 
   return (
     <div className="space-y-5">
@@ -74,6 +141,24 @@ export default function AllContacts() {
         </Button>
       </div>
 
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-4 py-2.5">
+          <span className="text-sm font-medium text-indigo-300">{selectedIds.size} selected</span>
+          <div className="ml-auto flex gap-2">
+            <Button size="sm" variant="outline" className="gap-1.5 border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/20" onClick={() => setShowBulkEdit(true)}>
+              <Pencil className="h-3.5 w-3.5" /> Bulk Edit
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1.5 border-red-500/40 text-red-400 hover:bg-red-500/20" onClick={() => setShowBulkDelete(true)}>
+              <Trash2 className="h-3.5 w-3.5" /> Bulk Delete
+            </Button>
+            <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => setSelectedIds(new Set())}>
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      )}
+
       <Card className="shadow-sm">
         <CardHeader className="pb-3">
           <div className="flex items-center gap-3 flex-wrap">
@@ -81,6 +166,18 @@ export default function AllContacts() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
               <Input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Search by name, phone, or email…" className="pl-9 h-9 text-sm" />
             </div>
+            {/* Phonetic search toggle */}
+            <label className="flex items-center gap-2 cursor-pointer select-none shrink-0">
+              <Checkbox
+                checked={phoneticSearch}
+                onCheckedChange={(v) => setPhoneticSearch(!!v)}
+                id="phonetic"
+              />
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                <AudioWaveform className="h-3 w-3" />
+                Phonetic
+              </span>
+            </label>
             <Button variant="outline" size="sm" onClick={() => setShowFilters(v => !v)} className="gap-2 shrink-0">
               <Filter className="w-3.5 h-3.5" />
               Filters
@@ -139,6 +236,12 @@ export default function AllContacts() {
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
+                  <TableHead className="w-10 px-3">
+                    <Checkbox
+                      checked={contacts.length > 0 && selectedIds.size === contacts.length}
+                      onCheckedChange={toggleAll}
+                    />
+                  </TableHead>
                   <TableHead className="text-xs">Name</TableHead>
                   <TableHead className="text-xs">Phone / Email</TableHead>
                   <TableHead className="text-xs">Region</TableHead>
@@ -152,16 +255,19 @@ export default function AllContacts() {
               <TableBody>
                 {isLoading && Array.from({ length: 8 }).map((_, i) => (
                   <TableRow key={i}>
-                    {Array.from({ length: 8 }).map((_, j) => (
+                    {Array.from({ length: 9 }).map((_, j) => (
                       <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                     ))}
                   </TableRow>
                 ))}
                 {!isLoading && contacts.map((c: any) => {
-                  const phones = c.phoneNumbers ? JSON.parse(c.phoneNumbers) as string[] : [];
-                  const emails = c.emails ? JSON.parse(c.emails) as string[] : [];
+                  let phones: string[] = []; try { phones = JSON.parse(c.phoneNumbers ?? "[]"); } catch { /* ignore */ }
+                  let emails: string[] = []; try { emails = JSON.parse(c.emails ?? "[]"); } catch { /* ignore */ }
                   return (
-                    <TableRow key={c.id} className="hover:bg-muted/30">
+                    <TableRow key={c.id} className={`hover:bg-muted/30 ${selectedIds.has(c.id) ? "bg-indigo-500/5" : ""}`}>
+                      <TableCell className="px-3">
+                        <Checkbox checked={selectedIds.has(c.id)} onCheckedChange={() => toggleRow(c.id)} />
+                      </TableCell>
                       <TableCell className="font-medium text-sm py-3">{c.displayName}</TableCell>
                       <TableCell className="py-3">
                         <div className="space-y-0.5">
@@ -180,7 +286,7 @@ export default function AllContacts() {
                 })}
                 {!isLoading && contacts.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-16">
+                    <TableCell colSpan={9} className="text-center py-16">
                       <Users className="w-10 h-10 text-muted-foreground/30 mx-auto mb-2" />
                       <p className="text-sm text-muted-foreground">No contacts found</p>
                       {activeFilterCount > 0 && <p className="text-xs text-muted-foreground mt-1">Try clearing your filters</p>}
@@ -208,6 +314,95 @@ export default function AllContacts() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Bulk Edit Dialog */}
+      <Dialog open={showBulkEdit} onOpenChange={setShowBulkEdit}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Bulk Edit {selectedIds.size} Contact{selectedIds.size > 1 ? "s" : ""}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">Only filled fields will be updated. Leave blank to keep existing values.</p>
+          <div className="space-y-3 mt-2">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Region</label>
+              <Select value={bulkEditData.regionId?.toString() ?? ""} onValueChange={v => setBulkEditData(d => ({ ...d, regionId: v ? Number(v) : undefined }))}>
+                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Keep existing" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Keep existing</SelectItem>
+                  {metadata.regions.map(r => <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Source</label>
+              <Select value={bulkEditData.contactSourceId?.toString() ?? ""} onValueChange={v => setBulkEditData(d => ({ ...d, contactSourceId: v ? Number(v) : undefined }))}>
+                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Keep existing" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Keep existing</SelectItem>
+                  {metadata.contactSources.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Vendor Subcategory</label>
+              <Select value={bulkEditData.vendorSubcategoryId?.toString() ?? ""} onValueChange={v => setBulkEditData(d => ({ ...d, vendorSubcategoryId: v ? Number(v) : undefined }))}>
+                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Keep existing" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Keep existing</SelectItem>
+                  {metadata.vendorSubcategories.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Client Subcategory</label>
+              <Select value={bulkEditData.clientSubcategoryId?.toString() ?? ""} onValueChange={v => setBulkEditData(d => ({ ...d, clientSubcategoryId: v ? Number(v) : undefined }))}>
+                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Keep existing" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Keep existing</SelectItem>
+                  {metadata.clientSubcategories.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Consultant Subcategory</label>
+              <Select value={bulkEditData.consultantSubcategoryId?.toString() ?? ""} onValueChange={v => setBulkEditData(d => ({ ...d, consultantSubcategoryId: v ? Number(v) : undefined }))}>
+                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Keep existing" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Keep existing</SelectItem>
+                  {metadata.consultantSubcategories.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setShowBulkEdit(false)}>Cancel</Button>
+            <Button onClick={handleBulkEdit} disabled={bulkUpdateMutation.isPending || Object.values(bulkEditData).every(v => !v)} className="bg-indigo-600 hover:bg-indigo-700">
+              {bulkUpdateMutation.isPending ? "Updating…" : "Apply Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Delete Confirmation */}
+      <AlertDialog open={showBulkDelete} onOpenChange={setShowBulkDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedIds.size} contact{selectedIds.size > 1 ? "s" : ""}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. All selected contacts will be permanently deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => bulkDeleteMutation.mutate({ ids: Array.from(selectedIds) })}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {bulkDeleteMutation.isPending ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

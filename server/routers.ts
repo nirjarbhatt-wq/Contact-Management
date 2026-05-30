@@ -5,17 +5,23 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import {
+  bulkDeleteContacts,
+  bulkUpdateContacts,
   createSubcategory,
-  deleteSubcategory,
   deleteContact,
+  deleteSubcategory,
+  findDuplicates,
   getAuditLogs,
   getAllCategories,
   getAllContactSources,
   getAllRegions,
   getAllSubcategories,
+  getAllUsers,
   getCategoryByType,
   getContactById,
   getContacts,
+  getDashboardStats,
+  getDrilldownContacts,
   getOverviewStats,
   getReportByClientSubcategory,
   getReportByConsultantSubcategory,
@@ -23,8 +29,8 @@ import {
   getReportBySource,
   getReportByVendorSubcategory,
   getReportUploadActivity,
-  getDrilldownContacts,
   getSubcategoriesByCategoryId,
+  importContactsFromCSV,
   insertAuditLog,
   insertContact,
   updateContact,
@@ -104,6 +110,7 @@ const contactsRouter = router({
     myUploadsOnly: z.boolean().optional(),
     page: z.number().int().positive().default(1),
     pageSize: z.number().int().positive().max(100).default(20),
+    phoneticSearch: z.boolean().optional(),
   })).query(async ({ ctx, input }) => {
     const filters = {
       ...input,
@@ -204,6 +211,92 @@ const contactsRouter = router({
     });
     return { success: true };
   }),
+
+  // ── New Phase 3 procedures ─────────────────────────────────────────────────
+
+  checkDuplicates: protectedProcedure.input(z.object({
+    phoneNumbers: z.array(z.string()),
+    emails: z.array(z.string()),
+  })).query(({ input }) => findDuplicates(input.phoneNumbers, input.emails)),
+
+  bulkUpdate: protectedProcedure.input(z.object({
+    ids: z.array(z.number().int().positive()).min(1),
+    regionId: z.number().int().positive().nullable().optional(),
+    vendorCategoryId: z.number().int().positive().nullable().optional(),
+    vendorSubcategoryId: z.number().int().positive().nullable().optional(),
+    clientCategoryId: z.number().int().positive().nullable().optional(),
+    clientSubcategoryId: z.number().int().positive().nullable().optional(),
+    consultantCategoryId: z.number().int().positive().nullable().optional(),
+    consultantSubcategoryId: z.number().int().positive().nullable().optional(),
+    contactSourceId: z.number().int().positive().nullable().optional(),
+  })).mutation(async ({ ctx, input }) => {
+    const { ids, ...data } = input;
+    // Non-admins can only bulk-edit their own contacts
+    if (ctx.user.role !== "admin") {
+      for (const id of ids) {
+        const existing = await getContactById(id);
+        if (!existing || existing.uploadedByUserId !== ctx.user.id) {
+          throw new TRPCError({ code: "FORBIDDEN", message: `Contact ${id} does not belong to you` });
+        }
+      }
+    }
+    const count = await bulkUpdateContacts(ids, data);
+    await insertAuditLog({
+      userId: ctx.user.id,
+      action: "bulk_edit",
+      entityType: "contact",
+      details: JSON.stringify({ ids, ...data }),
+    });
+    return { updated: count };
+  }),
+
+  bulkDelete: protectedProcedure.input(z.object({
+    ids: z.array(z.number().int().positive()).min(1),
+  })).mutation(async ({ ctx, input }) => {
+    // Non-admins can only bulk-delete their own contacts
+    if (ctx.user.role !== "admin") {
+      for (const id of input.ids) {
+        const existing = await getContactById(id);
+        if (!existing || existing.uploadedByUserId !== ctx.user.id) {
+          throw new TRPCError({ code: "FORBIDDEN", message: `Contact ${id} does not belong to you` });
+        }
+      }
+    }
+    const count = await bulkDeleteContacts(input.ids);
+    await insertAuditLog({
+      userId: ctx.user.id,
+      action: "bulk_delete",
+      entityType: "contact",
+      details: JSON.stringify({ ids: input.ids, count }),
+    });
+    return { deleted: count };
+  }),
+
+  importCSV: protectedProcedure.input(z.array(z.object({
+    displayName: z.string().min(1),
+    firstName: z.string().optional(),
+    lastName: z.string().optional(),
+    phoneNumbers: z.array(z.string()).optional(),
+    emails: z.array(z.string()).optional(),
+    regionId: z.number().int().positive().optional(),
+    vendorCategoryId: z.number().int().positive().optional(),
+    vendorSubcategoryId: z.number().int().positive().optional(),
+    clientCategoryId: z.number().int().positive().optional(),
+    clientSubcategoryId: z.number().int().positive().optional(),
+    consultantCategoryId: z.number().int().positive().optional(),
+    consultantSubcategoryId: z.number().int().positive().optional(),
+    contactSourceId: z.number().int().positive().optional(),
+    notes: z.string().optional(),
+  }))).mutation(async ({ ctx, input }) => {
+    const result = await importContactsFromCSV(input, ctx.user.id);
+    await insertAuditLog({
+      userId: ctx.user.id,
+      action: "csv_import",
+      entityType: "contact",
+      details: JSON.stringify({ inserted: result.inserted, skipped: result.skipped }),
+    });
+    return result;
+  }),
 });
 
 // ─── Reports Router ───────────────────────────────────────────────────────────
@@ -219,6 +312,7 @@ const reportsRouter = router({
     filterType: z.enum(["region", "vendorSubcategory", "clientSubcategory", "consultantSubcategory", "source"]),
     filterId: z.number().int(),
   })).query(({ input }) => getDrilldownContacts(input.filterType, input.filterId)),
+  dashboard: protectedProcedure.query(() => getDashboardStats()),
 });
 
 // ─── Audit Router ─────────────────────────────────────────────────────────────
@@ -227,6 +321,11 @@ const auditRouter = router({
     page: z.number().int().positive().default(1),
     pageSize: z.number().int().positive().max(100).default(50),
   })).query(({ input }) => getAuditLogs(input.page, input.pageSize)),
+});
+
+// ─── Admin Router ─────────────────────────────────────────────────────────────
+const adminRouter = router({
+  listUsers: adminProcedure.query(() => getAllUsers()),
 });
 
 // ─── App Router ───────────────────────────────────────────────────────────────
@@ -244,6 +343,7 @@ export const appRouter = router({
   contacts: contactsRouter,
   reports: reportsRouter,
   audit: auditRouter,
+  admin: adminRouter,
 });
 
 export type AppRouter = typeof appRouter;

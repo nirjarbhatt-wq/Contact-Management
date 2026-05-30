@@ -100,7 +100,7 @@ export type InsertContact = typeof contacts.$inferInsert;
 export const auditLogs = mysqlTable("audit_logs", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull().references(() => users.id),
-  action: mysqlEnum("action", ["upload", "edit", "delete", "create_subcategory", "delete_subcategory"]).notNull(),
+  action: mysqlEnum("action", ["upload", "edit", "delete", "create_subcategory", "delete_subcategory", "bulk_edit", "bulk_delete", "csv_import"]).notNull(),
   entityType: varchar("entityType", { length: 64 }).notNull(),
   entityId: int("entityId"),
   details: text("details"),

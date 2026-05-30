@@ -9,12 +9,14 @@ import DashboardLayout from "./components/DashboardLayout";
 import NotFound from "./pages/NotFound";
 
 // Pages
+import Dashboard from "./pages/Dashboard";
 import AddContacts from "./pages/AddContacts";
 import MyUploads from "./pages/MyUploads";
 import AllContacts from "./pages/AllContacts";
 import Reports from "./pages/Reports";
 import AdminPanel from "./pages/AdminPanel";
 import AuditLog from "./pages/AuditLog";
+import ImportContacts from "./pages/ImportContacts";
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { loading, isAuthenticated } = useAuth();
@@ -40,8 +42,10 @@ function AppRoutes() {
     <AuthGate>
       <DashboardLayout>
         <Switch>
-          <Route path="/" component={AddContacts} />
+          <Route path="/" component={Dashboard} />
+          <Route path="/dashboard" component={Dashboard} />
           <Route path="/add-contacts" component={AddContacts} />
+          <Route path="/import" component={ImportContacts} />
           <Route path="/my-uploads" component={MyUploads} />
           <Route path="/all-contacts" component={AllContacts} />
           <Route path="/reports" component={Reports} />

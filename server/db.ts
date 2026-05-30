@@ -1,4 +1,4 @@
-import { and, desc, eq, like, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, like, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser,
@@ -24,6 +24,30 @@ export async function getDb() {
     }
   }
   return _db;
+}
+
+// ─── Phonetic helpers (Soundex) ───────────────────────────────────────────────
+// Simple JS Soundex for server-side phonetic matching
+function soundex(name: string): string {
+  if (!name) return "";
+  const s = name.toUpperCase().replace(/[^A-Z]/g, "");
+  if (!s) return "";
+  const map: Record<string, string> = {
+    B: "1", F: "1", P: "1", V: "1",
+    C: "2", G: "2", J: "2", K: "2", Q: "2", S: "2", X: "2", Z: "2",
+    D: "3", T: "3",
+    L: "4",
+    M: "5", N: "5",
+    R: "6",
+  };
+  let code = s[0]!;
+  let prev = map[s[0]!] ?? "0";
+  for (let i = 1; i < s.length && code.length < 4; i++) {
+    const c = map[s[i]!] ?? "0";
+    if (c !== "0" && c !== prev) code += c;
+    prev = c;
+  }
+  return code.padEnd(4, "0");
 }
 
 // ─── Users ────────────────────────────────────────────────────────────────────
@@ -54,6 +78,12 @@ export async function getUserByOpenId(openId: string) {
   return result[0];
 }
 
+export async function getAllUsers() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ id: users.id, name: users.name, email: users.email, role: users.role }).from(users).orderBy(users.name);
+}
+
 // ─── Regions ──────────────────────────────────────────────────────────────────
 
 export async function getAllRegions() {
@@ -63,8 +93,6 @@ export async function getAllRegions() {
 }
 
 // ─── Categories & Subcategories ───────────────────────────────────────────────
-// Categories are fixed system-level: Vendor, Client, Consultant.
-// Subcategories are user-managed under each category.
 
 export async function getAllCategories() {
   const db = await getDb();
@@ -124,12 +152,8 @@ export type ContactFilters = {
   uploadedByUserId?: number;
   page?: number;
   pageSize?: number;
+  phoneticSearch?: boolean;
 };
-
-// Alias tables for multiple joins on same table
-const vendorSubcat = subcategories;
-const clientSubcat = subcategories;
-const consultantSubcat = subcategories;
 
 export async function getContacts(filters: ContactFilters = {}) {
   const db = await getDb();
@@ -137,18 +161,24 @@ export async function getContacts(filters: ContactFilters = {}) {
   const {
     search, regionId, vendorSubcategoryId, clientSubcategoryId,
     consultantSubcategoryId, contactSourceId, uploadedByUserId,
-    page = 1, pageSize = 20
+    page = 1, pageSize = 20, phoneticSearch = false,
   } = filters;
 
   const conditions = [];
+
   if (search) {
-    conditions.push(
-      or(
-        like(contacts.displayName, `%${search}%`),
-        like(contacts.phoneNumbers, `%${search}%`),
-        like(contacts.emails, `%${search}%`)
-      )
-    );
+    if (phoneticSearch) {
+      // Phonetic: fetch all names and filter in JS (small dataset ≤ 20 users)
+      // We'll handle this as a post-filter below
+    } else {
+      conditions.push(
+        or(
+          like(contacts.displayName, `%${search}%`),
+          like(contacts.phoneNumbers, `%${search}%`),
+          like(contacts.emails, `%${search}%`)
+        )
+      );
+    }
   }
   if (regionId) conditions.push(eq(contacts.regionId, regionId));
   if (vendorSubcategoryId) conditions.push(eq(contacts.vendorSubcategoryId, vendorSubcategoryId));
@@ -160,7 +190,6 @@ export async function getContacts(filters: ContactFilters = {}) {
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
   const offset = (page - 1) * pageSize;
 
-  // Use raw SQL for multi-join on same table (subcategories)
   const [rows, countResult] = await Promise.all([
     db.execute(sql`
       SELECT
@@ -185,12 +214,28 @@ export async function getContacts(filters: ContactFilters = {}) {
       LEFT JOIN users u ON c.uploadedByUserId = u.id
       ${whereClause ? sql`WHERE ${whereClause}` : sql``}
       ORDER BY c.createdAt DESC
-      LIMIT ${pageSize} OFFSET ${offset}
+      LIMIT ${phoneticSearch && search ? 9999 : pageSize} OFFSET ${phoneticSearch && search ? 0 : offset}
     `),
     db.select({ count: sql<number>`count(*)` }).from(contacts).where(whereClause),
   ]);
 
-  return { contacts: (rows as any[])[0] as any[], total: Number(countResult[0]?.count ?? 0) };
+  let allRows = (rows as any[])[0] as any[];
+
+  // Phonetic post-filter
+  if (phoneticSearch && search) {
+    const searchCode = soundex(search);
+    const searchLower = search.toLowerCase();
+    allRows = allRows.filter((r: any) => {
+      const name: string = r.displayName ?? "";
+      // Match if soundex matches OR if name contains search (case-insensitive)
+      return soundex(name) === searchCode || name.toLowerCase().includes(searchLower);
+    });
+    const total = allRows.length;
+    const paginated = allRows.slice(offset, offset + pageSize);
+    return { contacts: paginated, total };
+  }
+
+  return { contacts: allRows, total: Number(countResult[0]?.count ?? 0) };
 }
 
 export async function getContactById(id: number) {
@@ -245,11 +290,189 @@ export async function deleteContact(id: number) {
   await db.delete(contacts).where(eq(contacts.id, id));
 }
 
+// ─── Duplicate Detection ──────────────────────────────────────────────────────
+
+export type DuplicateCandidate = {
+  id: number;
+  displayName: string;
+  phoneNumbers: string | null;
+  emails: string | null;
+  uploaderName: string | null;
+  createdAt: Date;
+};
+
+export async function findDuplicates(phoneNumbers: string[], emails: string[]): Promise<DuplicateCandidate[]> {
+  const db = await getDb();
+  if (!db) return [];
+  if (phoneNumbers.length === 0 && emails.length === 0) return [];
+
+  // Build conditions: any phone or email overlap
+  const phoneLikes = phoneNumbers.map(p => like(contacts.phoneNumbers, `%${p}%`));
+  const emailLikes = emails.map(e => like(contacts.emails, `%${e}%`));
+  const allConditions = [...phoneLikes, ...emailLikes];
+  if (allConditions.length === 0) return [];
+
+  const rows = await db.execute(sql`
+    SELECT c.id, c.displayName, c.phoneNumbers, c.emails, c.createdAt, u.name AS uploaderName
+    FROM contacts c
+    LEFT JOIN users u ON c.uploadedByUserId = u.id
+    WHERE ${or(...allConditions)}
+    LIMIT 20
+  `);
+  return (rows as any[])[0] as DuplicateCandidate[];
+}
+
+// ─── Bulk Edit ────────────────────────────────────────────────────────────────
+
+export async function bulkUpdateContacts(
+  ids: number[],
+  data: Partial<{
+    regionId: number | null;
+    vendorCategoryId: number | null;
+    vendorSubcategoryId: number | null;
+    clientCategoryId: number | null;
+    clientSubcategoryId: number | null;
+    consultantCategoryId: number | null;
+    consultantSubcategoryId: number | null;
+    contactSourceId: number | null;
+  }>
+) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  if (ids.length === 0) return 0;
+  await db.update(contacts).set(data).where(inArray(contacts.id, ids));
+  return ids.length;
+}
+
+export async function bulkDeleteContacts(ids: number[]) {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  if (ids.length === 0) return 0;
+  await db.delete(contacts).where(inArray(contacts.id, ids));
+  return ids.length;
+}
+
+// ─── CSV Import ───────────────────────────────────────────────────────────────
+
+export async function importContactsFromCSV(
+  rows: Array<{
+    displayName: string;
+    firstName?: string;
+    lastName?: string;
+    phoneNumbers?: string[];
+    emails?: string[];
+    regionId?: number;
+    vendorCategoryId?: number;
+    vendorSubcategoryId?: number;
+    clientCategoryId?: number;
+    clientSubcategoryId?: number;
+    consultantCategoryId?: number;
+    consultantSubcategoryId?: number;
+    contactSourceId?: number;
+    notes?: string;
+  }>,
+  uploadedByUserId: number
+): Promise<{ inserted: number; skipped: number }> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  let inserted = 0;
+  let skipped = 0;
+  for (const row of rows) {
+    try {
+      await db.insert(contacts).values({
+        uploadedByUserId,
+        displayName: row.displayName,
+        firstName: row.firstName,
+        lastName: row.lastName,
+        phoneNumbers: row.phoneNumbers ? JSON.stringify(row.phoneNumbers) : undefined,
+        emails: row.emails ? JSON.stringify(row.emails) : undefined,
+        regionId: row.regionId,
+        vendorCategoryId: row.vendorCategoryId,
+        vendorSubcategoryId: row.vendorSubcategoryId,
+        clientCategoryId: row.clientCategoryId,
+        clientSubcategoryId: row.clientSubcategoryId,
+        consultantCategoryId: row.consultantCategoryId,
+        consultantSubcategoryId: row.consultantSubcategoryId,
+        contactSourceId: row.contactSourceId,
+        notes: row.notes,
+      });
+      inserted++;
+    } catch {
+      skipped++;
+    }
+  }
+  return { inserted, skipped };
+}
+
+// ─── Dashboard Stats ──────────────────────────────────────────────────────────
+
+export async function getDashboardStats() {
+  const db = await getDb();
+  if (!db) return {
+    totalContacts: 0, contactsThisWeek: 0, contactsThisMonth: 0,
+    activeUsers: 0, topRegions: [], recentContacts: [], uploadsByUser: [],
+  };
+
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+  const [
+    totalResult,
+    weekResult,
+    monthResult,
+    activeUsersResult,
+    topRegionsResult,
+    recentResult,
+    uploadsByUserResult,
+    activityResult,
+  ] = await Promise.all([
+    db.select({ count: sql<number>`count(*)` }).from(contacts),
+    db.select({ count: sql<number>`count(*)` }).from(contacts).where(sql`${contacts.createdAt} >= ${weekAgo}`),
+    db.select({ count: sql<number>`count(*)` }).from(contacts).where(sql`${contacts.createdAt} >= ${monthAgo}`),
+    db.select({ count: sql<number>`count(distinct ${contacts.uploadedByUserId})` }).from(contacts).where(sql`${contacts.createdAt} >= ${monthAgo}`),
+    db.execute(sql`
+      SELECT r.name AS regionName, COUNT(*) AS count
+      FROM contacts c LEFT JOIN regions r ON c.regionId = r.id
+      WHERE c.regionId IS NOT NULL
+      GROUP BY r.name ORDER BY count DESC LIMIT 5
+    `),
+    db.execute(sql`
+      SELECT c.id, c.displayName, c.phoneNumbers, c.createdAt, u.name AS uploaderName
+      FROM contacts c LEFT JOIN users u ON c.uploadedByUserId = u.id
+      ORDER BY c.createdAt DESC LIMIT 10
+    `),
+    db.execute(sql`
+      SELECT u.name AS userName, COUNT(*) AS count
+      FROM contacts c LEFT JOIN users u ON c.uploadedByUserId = u.id
+      GROUP BY u.id, u.name ORDER BY count DESC LIMIT 10
+    `),
+    db.execute(sql`
+      SELECT DATE(createdAt) AS date, COUNT(*) AS count
+      FROM contacts
+      WHERE createdAt >= ${monthAgo}
+      GROUP BY DATE(createdAt)
+      ORDER BY date ASC
+    `),
+  ]);
+
+  return {
+    totalContacts: Number(totalResult[0]?.count ?? 0),
+    contactsThisWeek: Number(weekResult[0]?.count ?? 0),
+    contactsThisMonth: Number(monthResult[0]?.count ?? 0),
+    activeUsers: Number(activeUsersResult[0]?.count ?? 0),
+    topRegions: ((topRegionsResult as any[])[0] as any[]).map((r: any) => ({ name: r.regionName ?? "Unknown", count: Number(r.count) })),
+    recentContacts: ((recentResult as any[])[0] as any[]),
+    uploadsByUser: ((uploadsByUserResult as any[])[0] as any[]).map((r: any) => ({ name: r.userName ?? "Unknown", count: Number(r.count) })),
+    uploadActivity: ((activityResult as any[])[0] as any[]).map((r: any) => ({ date: String(r.date), count: Number(r.count) })),
+  };
+}
+
 // ─── Audit Logs ───────────────────────────────────────────────────────────────
 
 export async function insertAuditLog(data: {
   userId: number;
-  action: "upload" | "edit" | "delete" | "create_subcategory" | "delete_subcategory";
+  action: "upload" | "edit" | "delete" | "create_subcategory" | "delete_subcategory" | "bulk_edit" | "bulk_delete" | "csv_import";
   entityType: string;
   entityId?: number;
   details?: string;
@@ -306,11 +529,9 @@ export async function getReportByVendorSubcategory() {
   if (!db) return [];
   const rows = await db.execute(sql`
     SELECT s.id AS subcategoryId, s.name AS subcategoryName, COUNT(*) AS count
-    FROM contacts c
-    LEFT JOIN subcategories s ON c.vendorSubcategoryId = s.id
+    FROM contacts c LEFT JOIN subcategories s ON c.vendorSubcategoryId = s.id
     WHERE c.vendorSubcategoryId IS NOT NULL
-    GROUP BY s.id, s.name
-    ORDER BY count DESC
+    GROUP BY s.id, s.name ORDER BY count DESC
   `);
   return (rows as any[])[0] as { subcategoryId: number; subcategoryName: string; count: number }[];
 }
@@ -320,11 +541,9 @@ export async function getReportByClientSubcategory() {
   if (!db) return [];
   const rows = await db.execute(sql`
     SELECT s.id AS subcategoryId, s.name AS subcategoryName, COUNT(*) AS count
-    FROM contacts c
-    LEFT JOIN subcategories s ON c.clientSubcategoryId = s.id
+    FROM contacts c LEFT JOIN subcategories s ON c.clientSubcategoryId = s.id
     WHERE c.clientSubcategoryId IS NOT NULL
-    GROUP BY s.id, s.name
-    ORDER BY count DESC
+    GROUP BY s.id, s.name ORDER BY count DESC
   `);
   return (rows as any[])[0] as { subcategoryId: number; subcategoryName: string; count: number }[];
 }
@@ -334,11 +553,9 @@ export async function getReportByConsultantSubcategory() {
   if (!db) return [];
   const rows = await db.execute(sql`
     SELECT s.id AS subcategoryId, s.name AS subcategoryName, COUNT(*) AS count
-    FROM contacts c
-    LEFT JOIN subcategories s ON c.consultantSubcategoryId = s.id
+    FROM contacts c LEFT JOIN subcategories s ON c.consultantSubcategoryId = s.id
     WHERE c.consultantSubcategoryId IS NOT NULL
-    GROUP BY s.id, s.name
-    ORDER BY count DESC
+    GROUP BY s.id, s.name ORDER BY count DESC
   `);
   return (rows as any[])[0] as { subcategoryId: number; subcategoryName: string; count: number }[];
 }

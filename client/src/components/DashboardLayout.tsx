@@ -46,7 +46,9 @@ import { Badge } from "./ui/badge";
 import { Separator } from "./ui/separator";
 
 const mainNavItems = [
+  { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard" },
   { icon: Upload, label: "Add Contacts", path: "/add-contacts" },
+  { icon: BookUser, label: "Import CSV", path: "/import" },
   { icon: ContactRound, label: "My Uploads", path: "/my-uploads" },
   { icon: Users, label: "All Contacts", path: "/all-contacts" },
   { icon: BarChart3, label: "Reports", path: "/reports" },
