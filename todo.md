@@ -99,13 +99,10 @@
 - [x] Button is visible in the dashboard quick-actions row, fetches all pages and triggers download
 
 ### Contact Detail Side Panel
-- [ ] Clicking a contact row in All Contacts or Dashboard recent feed opens a slide-over drawer
-- [ ] Drawer shows all fields, full metadata, notes, and audit history for that contact
-- [ ] Inline edit form inside the drawer
+- [x] Contact detail side panel — skipped per user request (not needed)
 
 ### Owner Notifications
-- [ ] Wire notifyOwner() into contacts upload procedure
-- [ ] Notify owner when team member uploads or imports contacts
+- [x] Owner notifications — skipped per user request (not needed)
 
 ## Phase 5 - Capacitor Native App (iOS & Android)
 
