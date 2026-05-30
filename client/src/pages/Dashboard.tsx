@@ -55,6 +55,7 @@ function StatCard({
 
 export default function Dashboard() {
   const { data, isLoading } = trpc.reports.dashboard.useQuery();
+  const [, navigate] = useLocation();
 
   if (isLoading) {
     return (
@@ -82,8 +83,6 @@ export default function Dashboard() {
     recentContacts: [],
     uploadsByUser: [],
   };
-
-  const [, navigate] = useLocation();
 
   return (
     <div className="space-y-6 p-4 md:p-6">
