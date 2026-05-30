@@ -38,7 +38,7 @@
 ## Phase 2 - Milestone 1: Reports & Analytics
 - [x] Reports dashboard with 8 report types
 - [x] Recharts pie and bar charts
-- [ ] Drill-down from chart to contact list (Phase 2 enhancement)
+- [x] Drill-down from chart to contact list (Phase 2 enhancement)
 - [x] Export individual report data to CSV
 
 ## Phase 2 - Milestone 2: Audit Log & Admin

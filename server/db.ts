@@ -383,3 +383,33 @@ export async function getOverviewStats() {
     totalSubcategories: Number(subcategoryCount[0]?.count ?? 0),
   };
 }
+
+export async function getDrilldownContacts(
+  filterType: "region" | "vendorSubcategory" | "clientSubcategory" | "consultantSubcategory" | "source",
+  filterId: number
+) {
+  const db = await getDb();
+  if (!db) return [];
+  const colMap = {
+    region: contacts.regionId,
+    vendorSubcategory: contacts.vendorSubcategoryId,
+    clientSubcategory: contacts.clientSubcategoryId,
+    consultantSubcategory: contacts.consultantSubcategoryId,
+    source: contacts.contactSourceId,
+  } as const;
+  const col = colMap[filterType];
+  return db.select({
+    id: contacts.id,
+    displayName: contacts.displayName,
+    firstName: contacts.firstName,
+    lastName: contacts.lastName,
+    phoneNumbers: contacts.phoneNumbers,
+    emails: contacts.emails,
+    notes: contacts.notes,
+    createdAt: contacts.createdAt,
+  })
+    .from(contacts)
+    .where(eq(col, filterId))
+    .orderBy(contacts.displayName)
+    .limit(200);
+}

@@ -23,6 +23,7 @@ import {
   getReportBySource,
   getReportByVendorSubcategory,
   getReportUploadActivity,
+  getDrilldownContacts,
   getSubcategoriesByCategoryId,
   insertAuditLog,
   insertContact,
@@ -214,6 +215,10 @@ const reportsRouter = router({
   byConsultantSubcategory: protectedProcedure.query(() => getReportByConsultantSubcategory()),
   bySource: protectedProcedure.query(() => getReportBySource()),
   uploadActivity: protectedProcedure.query(() => getReportUploadActivity()),
+  drilldown: protectedProcedure.input(z.object({
+    filterType: z.enum(["region", "vendorSubcategory", "clientSubcategory", "consultantSubcategory", "source"]),
+    filterId: z.number().int(),
+  })).query(({ input }) => getDrilldownContacts(input.filterType, input.filterId)),
 });
 
 // ─── Audit Router ─────────────────────────────────────────────────────────────
