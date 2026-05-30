@@ -58,3 +58,7 @@
 - [x] Update Admin Panel: only manage sub-categories (not the parent categories themselves)
 - [x] Update AllContacts filters to reflect the new category/subcategory model
 - [x] Update Reports to reflect the new model
+
+## Category Selection Fix
+- [x] Change Vendor/Client/Consultant from always-visible sections to a radio button group — user selects ONE category, then picks a sub-category under it
+- [x] Update MyUploads edit form with the same radio-select pattern

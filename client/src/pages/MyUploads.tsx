@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Phone, Mail, Search, Pencil, Trash2, ContactRound, ChevronLeft, ChevronRight } from "lucide-react";
+import { Phone, Mail, Search, Pencil, Trash2, ContactRound, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 
 type ContactRow = {
   id: number;
@@ -37,20 +37,94 @@ type ContactRow = {
   contactSourceId: number | null;
 };
 
+function CreateSubDialog({
+  categoryId, categoryName, onClose, onCreated, createMutation,
+}: {
+  categoryId: number;
+  categoryName: string;
+  onClose: () => void;
+  onCreated: (id: number) => void;
+  createMutation: ReturnType<typeof trpc.metadata.createSubcategory.useMutation>;
+}) {
+  const [name, setName] = useState("");
+  const handleCreate = async () => {
+    if (!name.trim()) return;
+    const result = await createMutation.mutateAsync({ categoryId, name: name.trim() });
+    onCreated(result.id);
+    onClose();
+  };
+  return (
+    <div className="flex gap-2 mt-1">
+      <Input
+        value={name}
+        onChange={e => setName(e.target.value)}
+        placeholder={`New ${categoryName} sub-category`}
+        className="h-8 text-sm"
+        autoFocus
+        onKeyDown={e => { if (e.key === "Enter") handleCreate(); if (e.key === "Escape") onClose(); }}
+      />
+      <Button size="sm" onClick={handleCreate} disabled={!name.trim() || createMutation.isPending} className="h-8 px-3">
+        Add
+      </Button>
+      <Button size="sm" variant="ghost" onClick={onClose} className="h-8 px-2">✕</Button>
+    </div>
+  );
+}
+
 function EditDialog({ contact, onClose }: { contact: ContactRow; onClose: () => void }) {
   const metadata = useMetadata();
   const utils = trpc.useUtils();
 
+  // Derive initial selectedCategory from the stored contact data
+  const initCategory = (): "vendor" | "client" | "consultant" | undefined => {
+    if (contact.vendorSubcategoryId || contact.vendorCategoryId) return "vendor";
+    if (contact.clientSubcategoryId || contact.clientCategoryId) return "client";
+    if (contact.consultantSubcategoryId || contact.consultantCategoryId) return "consultant";
+    return undefined;
+  };
+  const initSubcategoryId = (): number | undefined => {
+    return (contact.vendorSubcategoryId ?? contact.clientSubcategoryId ?? contact.consultantSubcategoryId) ?? undefined;
+  };
+
   const [form, setForm] = useState({
     regionId: contact.regionId ?? undefined as number | undefined,
-    vendorCategoryId: contact.vendorCategoryId ?? undefined as number | undefined,
-    vendorSubcategoryId: contact.vendorSubcategoryId ?? undefined as number | undefined,
-    clientCategoryId: contact.clientCategoryId ?? undefined as number | undefined,
-    clientSubcategoryId: contact.clientSubcategoryId ?? undefined as number | undefined,
-    consultantCategoryId: contact.consultantCategoryId ?? undefined as number | undefined,
-    consultantSubcategoryId: contact.consultantSubcategoryId ?? undefined as number | undefined,
+    selectedCategory: initCategory(),
+    subcategoryId: initSubcategoryId(),
     contactSourceId: contact.contactSourceId ?? undefined as number | undefined,
     notes: contact.notes ?? "",
+  });
+  const [createSubOpen, setCreateSubOpen] = useState(false);
+  const createSubMutation = trpc.metadata.createSubcategory.useMutation();
+  const { refetch: refetchMeta } = metadata;
+
+  const CATEGORY_OPTIONS = [
+    { type: "vendor" as const,     label: "Vendor",     color: "bg-blue-500" },
+    { type: "client" as const,     label: "Client",     color: "bg-emerald-500" },
+    { type: "consultant" as const, label: "Consultant", color: "bg-violet-500" },
+  ];
+
+  const activeCategoryObj =
+    form.selectedCategory === "vendor"   ? metadata.vendorCategory
+    : form.selectedCategory === "client"   ? metadata.clientCategory
+    : form.selectedCategory === "consultant" ? metadata.consultantCategory
+    : undefined;
+
+  const filteredSubs = activeCategoryObj
+    ? metadata.subcategories.filter(s => s.categoryId === activeCategoryObj.id)
+    : [];
+
+  // Build the backend payload from the simplified form state
+  const buildPayload = () => ({
+    id: contact.id,
+    regionId: form.regionId,
+    vendorCategoryId:      form.selectedCategory === "vendor"      && metadata.vendorCategory      ? metadata.vendorCategory.id      : undefined,
+    vendorSubcategoryId:   form.selectedCategory === "vendor"      ? form.subcategoryId : undefined,
+    clientCategoryId:      form.selectedCategory === "client"      && metadata.clientCategory      ? metadata.clientCategory.id      : undefined,
+    clientSubcategoryId:   form.selectedCategory === "client"      ? form.subcategoryId : undefined,
+    consultantCategoryId:  form.selectedCategory === "consultant"  && metadata.consultantCategory  ? metadata.consultantCategory.id  : undefined,
+    consultantSubcategoryId: form.selectedCategory === "consultant" ? form.subcategoryId : undefined,
+    contactSourceId: form.contactSourceId,
+    notes: form.notes,
   });
 
   const updateMutation = trpc.contacts.update.useMutation({
@@ -91,79 +165,73 @@ function EditDialog({ contact, onClose }: { contact: ContactRow; onClose: () => 
               </SelectContent>
             </Select>
           </div>
-
-          {/* Vendor Sub-Category */}
-          {metadata.vendorCategory && (
-            <div className="rounded-lg border p-3 space-y-2">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-blue-500/80" />
-                <span className="text-xs font-semibold uppercase tracking-wide">Vendor Sub-Category</span>
-              </div>
-              <Select
-                value={form.vendorSubcategoryId?.toString() ?? ""}
-                onValueChange={v => setForm(f => ({
-                  ...f,
-                  vendorCategoryId: v ? metadata.vendorCategory!.id : undefined,
-                  vendorSubcategoryId: v ? Number(v) : undefined,
-                }))}
-              >
-                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select vendor sub-category" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">— None —</SelectItem>
-                  {metadata.vendorSubcategories.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+          {/* Category radio + scoped sub-category */}
+          <div className="rounded-lg border p-3 space-y-3">
+            <Label className="text-xs font-medium">Category</Label>
+            <div className="flex gap-2 flex-wrap">
+              {CATEGORY_OPTIONS.map(opt => {
+                const isSelected = form.selectedCategory === opt.type;
+                return (
+                  <button
+                    key={opt.type}
+                    type="button"
+                    onClick={() => setForm(f => ({
+                      ...f,
+                      selectedCategory: f.selectedCategory === opt.type ? undefined : opt.type,
+                      subcategoryId: undefined,
+                    }))}
+                    className={[
+                      "flex items-center gap-2 px-4 py-2 rounded-full border text-sm font-medium transition-all duration-150 active:scale-95",
+                      isSelected
+                        ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                        : "border-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground",
+                    ].join(" ")}
+                  >
+                    <span className={`w-2 h-2 rounded-full ${opt.color} ${isSelected ? "opacity-100" : "opacity-40"}`} />
+                    {opt.label}
+                  </button>
+                );
+              })}
             </div>
-          )}
-
-          {/* Client Sub-Category */}
-          {metadata.clientCategory && (
-            <div className="rounded-lg border p-3 space-y-2">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-emerald-500/80" />
-                <span className="text-xs font-semibold uppercase tracking-wide">Client Sub-Category</span>
+            {form.selectedCategory && activeCategoryObj && (
+              <div className="space-y-1.5 pl-1 border-l-2 border-primary/20 ml-1">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-medium">
+                    {CATEGORY_OPTIONS.find(o => o.type === form.selectedCategory)?.label} Sub-Category
+                  </Label>
+                  <button
+                    type="button"
+                    onClick={() => setCreateSubOpen(true)}
+                    className="text-xs text-primary hover:text-primary/80 flex items-center gap-0.5 transition-colors"
+                  >
+                    <Plus className="w-3 h-3" /> New
+                  </button>
+                </div>
+                <Select
+                  value={form.subcategoryId?.toString() ?? ""}
+                  onValueChange={v => setForm(f => ({ ...f, subcategoryId: v ? Number(v) : undefined }))}
+                >
+                  <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select sub-category" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">— None —</SelectItem>
+                    {filteredSubs.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {createSubOpen && activeCategoryObj && (
+                  <CreateSubDialog
+                    categoryId={activeCategoryObj.id}
+                    categoryName={CATEGORY_OPTIONS.find(o => o.type === form.selectedCategory)?.label ?? ""}
+                    onClose={() => setCreateSubOpen(false)}
+                    onCreated={(id) => {
+                      setForm(f => ({ ...f, subcategoryId: id }));
+                      refetchMeta();
+                    }}
+                    createMutation={createSubMutation}
+                  />
+                )}
               </div>
-              <Select
-                value={form.clientSubcategoryId?.toString() ?? ""}
-                onValueChange={v => setForm(f => ({
-                  ...f,
-                  clientCategoryId: v ? metadata.clientCategory!.id : undefined,
-                  clientSubcategoryId: v ? Number(v) : undefined,
-                }))}
-              >
-                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select client sub-category" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">— None —</SelectItem>
-                  {metadata.clientSubcategories.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {/* Consultant Sub-Category */}
-          {metadata.consultantCategory && (
-            <div className="rounded-lg border p-3 space-y-2">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-violet-500/80" />
-                <span className="text-xs font-semibold uppercase tracking-wide">Consultant Sub-Category</span>
-              </div>
-              <Select
-                value={form.consultantSubcategoryId?.toString() ?? ""}
-                onValueChange={v => setForm(f => ({
-                  ...f,
-                  consultantCategoryId: v ? metadata.consultantCategory!.id : undefined,
-                  consultantSubcategoryId: v ? Number(v) : undefined,
-                }))}
-              >
-                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select consultant sub-category" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">— None —</SelectItem>
-                  {metadata.consultantSubcategories.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
+            )}
+          </div>
           {/* Source */}
           <div className="space-y-1.5">
             <Label className="text-xs">Source of Contact</Label>
@@ -184,7 +252,7 @@ function EditDialog({ contact, onClose }: { contact: ContactRow; onClose: () => 
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={() => updateMutation.mutate({ id: contact.id, ...form })} disabled={updateMutation.isPending}>
+          <Button onClick={() => updateMutation.mutate(buildPayload())} disabled={updateMutation.isPending}>
             {updateMutation.isPending ? "Saving…" : "Save Changes"}
           </Button>
         </DialogFooter>

@@ -28,14 +28,12 @@ type DeviceContact = {
   emails: string[];
 };
 
+type CategoryType = "vendor" | "client" | "consultant";
+
 type ContactMetadata = {
   regionId?: number;
-  vendorCategoryId?: number;
-  vendorSubcategoryId?: number;
-  clientCategoryId?: number;
-  clientSubcategoryId?: number;
-  consultantCategoryId?: number;
-  consultantSubcategoryId?: number;
+  selectedCategory?: CategoryType;  // which category radio is selected
+  subcategoryId?: number;           // sub-category under the selected category
   contactSourceId?: number;
   notes?: string;
 };
@@ -113,73 +111,121 @@ function CreateSubcategoryDialog({
   );
 }
 
-// ─── Category + Subcategory Selector ─────────────────────────────────────────
-// Category is shown as a radio-style button group (fixed, always present).
-// Subcategory is a dropdown that filters by selected category.
-function CategorySubcategoryField({
-  label,
-  categoryId,
-  subcategories,
-  selectedSubcategoryId,
-  onSubcategoryChange,
+// ─── Category Radio + Scoped Subcategory ─────────────────────────────────────
+const CATEGORY_OPTIONS: { type: CategoryType; label: string; color: string }[] = [
+  { type: "vendor",     label: "Vendor",     color: "bg-blue-500" },
+  { type: "client",     label: "Client",     color: "bg-emerald-500" },
+  { type: "consultant", label: "Consultant", color: "bg-violet-500" },
+];
+
+function CategorySubcategorySelector({
+  metadata: m,
+  selectedCategory,
+  subcategoryId,
+  onChange,
 }: {
-  label: string;
-  categoryId: number;
-  subcategories: { id: number; name: string; categoryId: number }[];
-  selectedSubcategoryId?: number;
-  onSubcategoryChange: (id: number | undefined) => void;
+  metadata: ReturnType<typeof useMetadata>;
+  selectedCategory?: CategoryType;
+  subcategoryId?: number;
+  onChange: (category: CategoryType | undefined, subcategoryId: number | undefined) => void;
 }) {
   const [createOpen, setCreateOpen] = useState(false);
   const { refetch } = useMetadata();
-  const filtered = subcategories.filter(s => s.categoryId === categoryId);
+
+  const activeCategoryObj =
+    selectedCategory === "vendor"
+      ? m.vendorCategory
+      : selectedCategory === "client"
+        ? m.clientCategory
+        : selectedCategory === "consultant"
+          ? m.consultantCategory
+          : undefined;
+
+  const filteredSubs = activeCategoryObj
+    ? m.subcategories.filter(s => s.categoryId === activeCategoryObj.id)
+    : [];
+
+  const handleCategoryClick = (type: CategoryType) => {
+    if (selectedCategory === type) {
+      onChange(undefined, undefined); // deselect
+    } else {
+      onChange(type, undefined); // switch category, clear sub
+    }
+  };
 
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between">
-        <Label className="text-xs font-medium">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-primary/60 inline-block" />
-            {label} Sub-Category
-          </span>
-        </Label>
-        <button
-          type="button"
-          onClick={() => setCreateOpen(true)}
-          className="text-xs text-primary hover:text-primary/80 flex items-center gap-0.5 transition-colors"
-          title={`Add new ${label} sub-category`}
-        >
-          <Plus className="w-3 h-3" /> New
-        </button>
+    <div className="space-y-3">
+      <Label className="text-xs font-medium">Category</Label>
+
+      {/* Radio pill group — pick exactly one */}
+      <div className="flex gap-2 flex-wrap">
+        {CATEGORY_OPTIONS.map(opt => {
+          const isSelected = selectedCategory === opt.type;
+          return (
+            <button
+              key={opt.type}
+              type="button"
+              onClick={() => handleCategoryClick(opt.type)}
+              className={[
+                "flex items-center gap-2 px-4 py-2 rounded-full border text-sm font-medium transition-all duration-150 active:scale-95",
+                isSelected
+                  ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                  : "border-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground",
+              ].join(" ")}
+            >
+              <span className={`w-2 h-2 rounded-full ${opt.color} ${isSelected ? "opacity-100" : "opacity-40"}`} />
+              {opt.label}
+            </button>
+          );
+        })}
       </div>
-      <Select
-        value={selectedSubcategoryId?.toString() ?? ""}
-        onValueChange={v => onSubcategoryChange(v ? Number(v) : undefined)}
-      >
-        <SelectTrigger className="h-9 text-sm">
-          <SelectValue placeholder={`Select ${label} sub-category`} />
-        </SelectTrigger>
-        <SelectContent>
-          {filtered.length === 0 ? (
-            <div className="px-3 py-2 text-xs text-muted-foreground text-center">
-              No sub-categories yet — click "+ New" to add one
-            </div>
-          ) : (
-            filtered.map(s => (
-              <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
-            ))
-          )}
-        </SelectContent>
-      </Select>
-      <CreateSubcategoryDialog
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        categoryId={categoryId}
-        categoryName={label}
-        onCreated={(id) => {
-          onSubcategoryChange(id);
-          refetch();
-        }}
-      />
+
+      {/* Sub-category dropdown — only visible after a category is chosen */}
+      {selectedCategory && activeCategoryObj && (
+        <div className="space-y-1.5 pl-1 border-l-2 border-primary/20 ml-1">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs font-medium">
+              {CATEGORY_OPTIONS.find(o => o.type === selectedCategory)?.label} Sub-Category
+            </Label>
+            <button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              className="text-xs text-primary hover:text-primary/80 flex items-center gap-0.5 transition-colors"
+            >
+              <Plus className="w-3 h-3" /> New
+            </button>
+          </div>
+          <Select
+            value={subcategoryId?.toString() ?? ""}
+            onValueChange={v => onChange(selectedCategory, v ? Number(v) : undefined)}
+          >
+            <SelectTrigger className="h-9 text-sm">
+              <SelectValue placeholder="Select sub-category" />
+            </SelectTrigger>
+            <SelectContent>
+              {filteredSubs.length === 0 ? (
+                <div className="px-3 py-2 text-xs text-muted-foreground text-center">
+                  No sub-categories yet — click "+ New" to add one
+                </div>
+              ) : (
+                filteredSubs.map(s => (
+                  <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
+          <CreateSubcategoryDialog
+            open={createOpen}
+            onClose={() => setCreateOpen(false)}
+            categoryId={activeCategoryObj.id}
+            categoryName={CATEGORY_OPTIONS.find(o => o.type === selectedCategory)?.label ?? ""}
+            onCreated={(id) => {
+              onChange(selectedCategory, id);
+              refetch();
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -235,70 +281,19 @@ function MetadataForm({
             </SelectContent>
           </Select>
         </div>
-
-        {/* Vendor — fixed category bullet + subcategory dropdown */}
-        {m.vendorCategory && (
-          <div className="rounded-lg border p-3 space-y-2 bg-card">
-            <div className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-blue-500/80" />
-              <span className="text-xs font-semibold text-foreground/80 uppercase tracking-wide">Vendor</span>
-            </div>
-            <CategorySubcategoryField
-              label="Vendor"
-              categoryId={m.vendorCategory.id}
-              subcategories={m.subcategories}
-              selectedSubcategoryId={value.vendorSubcategoryId}
-              onSubcategoryChange={id => onChange({
-                ...value,
-                vendorCategoryId: id ? m.vendorCategory!.id : undefined,
-                vendorSubcategoryId: id,
-              })}
-            />
-          </div>
-        )}
-
-        {/* Client — fixed category bullet + subcategory dropdown */}
-        {m.clientCategory && (
-          <div className="rounded-lg border p-3 space-y-2 bg-card">
-            <div className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500/80" />
-              <span className="text-xs font-semibold text-foreground/80 uppercase tracking-wide">Client</span>
-            </div>
-            <CategorySubcategoryField
-              label="Client"
-              categoryId={m.clientCategory.id}
-              subcategories={m.subcategories}
-              selectedSubcategoryId={value.clientSubcategoryId}
-              onSubcategoryChange={id => onChange({
-                ...value,
-                clientCategoryId: id ? m.clientCategory!.id : undefined,
-                clientSubcategoryId: id,
-              })}
-            />
-          </div>
-        )}
-
-        {/* Consultant — fixed category bullet + subcategory dropdown */}
-        {m.consultantCategory && (
-          <div className="rounded-lg border p-3 space-y-2 bg-card">
-            <div className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-violet-500/80" />
-              <span className="text-xs font-semibold text-foreground/80 uppercase tracking-wide">Consultant</span>
-            </div>
-            <CategorySubcategoryField
-              label="Consultant"
-              categoryId={m.consultantCategory.id}
-              subcategories={m.subcategories}
-              selectedSubcategoryId={value.consultantSubcategoryId}
-              onSubcategoryChange={id => onChange({
-                ...value,
-                consultantCategoryId: id ? m.consultantCategory!.id : undefined,
-                consultantSubcategoryId: id,
-              })}
-            />
-          </div>
-        )}
-
+        {/* Category radio selector + scoped sub-category dropdown */}
+        <div className="rounded-lg border p-3 bg-card">
+          <CategorySubcategorySelector
+            metadata={m}
+            selectedCategory={value.selectedCategory}
+            subcategoryId={value.subcategoryId}
+            onChange={(cat, subId) => onChange({
+              ...value,
+              selectedCategory: cat,
+              subcategoryId: subId,
+            })}
+          />
+        </div>
         {/* Source of Contact */}
         <div className="space-y-1.5">
           <Label className="text-xs font-medium">Source of Contact</Label>
@@ -369,14 +364,41 @@ export default function AddContacts() {
 
   const handleUpload = async () => {
     try {
-      const payload = selectedContacts.map(c => ({
-        displayName: c.displayName,
-        firstName: c.firstName,
-        lastName: c.lastName,
-        phoneNumbers: c.phoneNumbers,
-        emails: c.emails,
-        ...metadataMap[c.id],
-      }));
+      const payload = selectedContacts.map(c => {
+        const meta = metadataMap[c.id] ?? {};
+        // Resolve which category IDs to send based on the selected radio
+        const vendorCategoryId =
+          meta.selectedCategory === "vendor" && metadata.vendorCategory
+            ? metadata.vendorCategory.id : undefined;
+        const vendorSubcategoryId =
+          meta.selectedCategory === "vendor" ? meta.subcategoryId : undefined;
+        const clientCategoryId =
+          meta.selectedCategory === "client" && metadata.clientCategory
+            ? metadata.clientCategory.id : undefined;
+        const clientSubcategoryId =
+          meta.selectedCategory === "client" ? meta.subcategoryId : undefined;
+        const consultantCategoryId =
+          meta.selectedCategory === "consultant" && metadata.consultantCategory
+            ? metadata.consultantCategory.id : undefined;
+        const consultantSubcategoryId =
+          meta.selectedCategory === "consultant" ? meta.subcategoryId : undefined;
+        return {
+          displayName: c.displayName,
+          firstName: c.firstName,
+          lastName: c.lastName,
+          phoneNumbers: c.phoneNumbers,
+          emails: c.emails,
+          regionId: meta.regionId,
+          vendorCategoryId,
+          vendorSubcategoryId,
+          clientCategoryId,
+          clientSubcategoryId,
+          consultantCategoryId,
+          consultantSubcategoryId,
+          contactSourceId: meta.contactSourceId,
+          notes: meta.notes,
+        };
+      });
       await uploadMutation.mutateAsync(payload);
       await utils.contacts.list.invalidate();
       toast.success(`${payload.length} contact${payload.length > 1 ? "s" : ""} uploaded successfully!`);
@@ -550,10 +572,18 @@ export default function AddContacts() {
                 {selectedContacts.map(c => {
                   const meta = metadataMap[c.id] ?? {};
                   const region = metadata.regions.find(r => r.id === meta.regionId);
-                  const vendorSub = metadata.vendorSubcategories.find(s => s.id === meta.vendorSubcategoryId);
-                  const clientSub = metadata.clientSubcategories.find(s => s.id === meta.clientSubcategoryId);
-                  const consultantSub = metadata.consultantSubcategories.find(s => s.id === meta.consultantSubcategoryId);
+                  const sub = meta.subcategoryId
+                    ? metadata.subcategories.find(s => s.id === meta.subcategoryId)
+                    : undefined;
                   const source = metadata.contactSources.find(s => s.id === meta.contactSourceId);
+                  const catLabel = meta.selectedCategory
+                    ? { vendor: "Vendor", client: "Client", consultant: "Consultant" }[meta.selectedCategory]
+                    : undefined;
+                  const catColor = meta.selectedCategory === "vendor"
+                    ? "bg-blue-500/10 text-blue-700 dark:text-blue-300"
+                    : meta.selectedCategory === "client"
+                      ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                      : "bg-violet-500/10 text-violet-700 dark:text-violet-300";
                   return (
                     <div key={c.id} className="flex items-start gap-3 p-3 rounded-lg border bg-card">
                       <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-primary font-semibold text-xs">
@@ -563,11 +593,10 @@ export default function AddContacts() {
                         <p className="font-medium text-sm">{c.displayName}</p>
                         <div className="flex flex-wrap gap-1 mt-1.5">
                           {region && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{region.name}</Badge>}
-                          {vendorSub && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-blue-500/10 text-blue-700 dark:text-blue-300">Vendor: {vendorSub.name}</Badge>}
-                          {clientSub && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">Client: {clientSub.name}</Badge>}
-                          {consultantSub && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-violet-500/10 text-violet-700 dark:text-violet-300">Consultant: {consultantSub.name}</Badge>}
+                          {catLabel && sub && <Badge variant="secondary" className={`text-[10px] px-1.5 py-0 ${catColor}`}>{catLabel}: {sub.name}</Badge>}
+                          {catLabel && !sub && <Badge variant="secondary" className={`text-[10px] px-1.5 py-0 ${catColor}`}>{catLabel}</Badge>}
                           {source && <Badge variant="outline" className="text-[10px] px-1.5 py-0">{source.name}</Badge>}
-                          {!region && !vendorSub && !clientSub && !consultantSub && !source && (
+                          {!region && !catLabel && !source && (
                             <span className="text-[10px] text-muted-foreground">No metadata added</span>
                           )}
                         </div>
