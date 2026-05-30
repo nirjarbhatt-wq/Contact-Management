@@ -1,17 +1,14 @@
-import { and, desc, eq, ilike, like, or, sql } from "drizzle-orm";
+import { and, desc, eq, like, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser,
   auditLogs,
-  clientSubcategories,
-  clients,
-  consultants,
+  categories,
   contactSources,
   contacts,
   regions,
+  subcategories,
   users,
-  vendorSubcategories,
-  vendors,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -57,7 +54,7 @@ export async function getUserByOpenId(openId: string) {
   return result[0];
 }
 
-// ─── Metadata ─────────────────────────────────────────────────────────────────
+// ─── Regions ──────────────────────────────────────────────────────────────────
 
 export async function getAllRegions() {
   const db = await getDb();
@@ -65,47 +62,49 @@ export async function getAllRegions() {
   return db.select().from(regions).orderBy(regions.category, regions.name);
 }
 
-export async function getAllVendors() {
+// ─── Categories & Subcategories ───────────────────────────────────────────────
+// Categories are fixed system-level: Vendor, Client, Consultant.
+// Subcategories are user-managed under each category.
+
+export async function getAllCategories() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(vendors).orderBy(vendors.name);
+  return db.select().from(categories).orderBy(categories.type, categories.name);
 }
 
-export async function getVendorSubcategories(vendorId: number) {
+export async function getCategoryByType(type: "vendor" | "client" | "consultant") {
   const db = await getDb();
-  if (!db) return [];
-  return db.select().from(vendorSubcategories).where(eq(vendorSubcategories.vendorId, vendorId)).orderBy(vendorSubcategories.name);
+  if (!db) return undefined;
+  const result = await db.select().from(categories).where(eq(categories.type, type)).limit(1);
+  return result[0];
 }
 
-export async function getAllVendorSubcategories() {
+export async function getAllSubcategories() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(vendorSubcategories).orderBy(vendorSubcategories.vendorId, vendorSubcategories.name);
+  return db.select().from(subcategories).orderBy(subcategories.categoryId, subcategories.name);
 }
 
-export async function getAllClients() {
+export async function getSubcategoriesByCategoryId(categoryId: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(clients).orderBy(clients.name);
+  return db.select().from(subcategories).where(eq(subcategories.categoryId, categoryId)).orderBy(subcategories.name);
 }
 
-export async function getClientSubcategories(clientId: number) {
+export async function createSubcategory(categoryId: number, name: string) {
   const db = await getDb();
-  if (!db) return [];
-  return db.select().from(clientSubcategories).where(eq(clientSubcategories.clientId, clientId)).orderBy(clientSubcategories.name);
+  if (!db) throw new Error("DB unavailable");
+  const [result] = await db.insert(subcategories).values({ categoryId, name });
+  return { id: (result as any).insertId as number, categoryId, name };
 }
 
-export async function getAllClientSubcategories() {
+export async function deleteSubcategory(id: number) {
   const db = await getDb();
-  if (!db) return [];
-  return db.select().from(clientSubcategories).orderBy(clientSubcategories.clientId, clientSubcategories.name);
+  if (!db) throw new Error("DB unavailable");
+  await db.delete(subcategories).where(eq(subcategories.id, id));
 }
 
-export async function getAllConsultants() {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(consultants).orderBy(consultants.name);
-}
+// ─── Contact Sources ──────────────────────────────────────────────────────────
 
 export async function getAllContactSources() {
   const db = await getDb();
@@ -113,91 +112,34 @@ export async function getAllContactSources() {
   return db.select().from(contactSources).orderBy(contactSources.name);
 }
 
-// ─── Create Metadata Entities ─────────────────────────────────────────────────
-
-export async function createVendor(name: string) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  const [result] = await db.insert(vendors).values({ name });
-  return { id: (result as any).insertId as number, name };
-}
-
-export async function createVendorSubcategory(vendorId: number, name: string) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  const [result] = await db.insert(vendorSubcategories).values({ vendorId, name });
-  return { id: (result as any).insertId as number, vendorId, name };
-}
-
-export async function createClient(name: string) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  const [result] = await db.insert(clients).values({ name });
-  return { id: (result as any).insertId as number, name };
-}
-
-export async function createClientSubcategory(clientId: number, name: string) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  const [result] = await db.insert(clientSubcategories).values({ clientId, name });
-  return { id: (result as any).insertId as number, clientId, name };
-}
-
-export async function createConsultant(name: string) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  const [result] = await db.insert(consultants).values({ name });
-  return { id: (result as any).insertId as number, name };
-}
-
-export async function deleteVendor(id: number) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  await db.delete(vendors).where(eq(vendors.id, id));
-}
-
-export async function deleteClient(id: number) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  await db.delete(clients).where(eq(clients.id, id));
-}
-
-export async function deleteConsultant(id: number) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  await db.delete(consultants).where(eq(consultants.id, id));
-}
-
-export async function deleteVendorSubcategory(id: number) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  await db.delete(vendorSubcategories).where(eq(vendorSubcategories.id, id));
-}
-
-export async function deleteClientSubcategory(id: number) {
-  const db = await getDb();
-  if (!db) throw new Error("DB unavailable");
-  await db.delete(clientSubcategories).where(eq(clientSubcategories.id, id));
-}
-
 // ─── Contacts ─────────────────────────────────────────────────────────────────
 
 export type ContactFilters = {
   search?: string;
   regionId?: number;
-  vendorId?: number;
-  clientId?: number;
-  consultantId?: number;
+  vendorSubcategoryId?: number;
+  clientSubcategoryId?: number;
+  consultantSubcategoryId?: number;
   contactSourceId?: number;
   uploadedByUserId?: number;
   page?: number;
   pageSize?: number;
 };
 
+// Alias tables for multiple joins on same table
+const vendorSubcat = subcategories;
+const clientSubcat = subcategories;
+const consultantSubcat = subcategories;
+
 export async function getContacts(filters: ContactFilters = {}) {
   const db = await getDb();
   if (!db) return { contacts: [], total: 0 };
-  const { search, regionId, vendorId, clientId, consultantId, contactSourceId, uploadedByUserId, page = 1, pageSize = 20 } = filters;
+  const {
+    search, regionId, vendorSubcategoryId, clientSubcategoryId,
+    consultantSubcategoryId, contactSourceId, uploadedByUserId,
+    page = 1, pageSize = 20
+  } = filters;
+
   const conditions = [];
   if (search) {
     conditions.push(
@@ -209,56 +151,46 @@ export async function getContacts(filters: ContactFilters = {}) {
     );
   }
   if (regionId) conditions.push(eq(contacts.regionId, regionId));
-  if (vendorId) conditions.push(eq(contacts.vendorId, vendorId));
-  if (clientId) conditions.push(eq(contacts.clientId, clientId));
-  if (consultantId) conditions.push(eq(contacts.consultantId, consultantId));
+  if (vendorSubcategoryId) conditions.push(eq(contacts.vendorSubcategoryId, vendorSubcategoryId));
+  if (clientSubcategoryId) conditions.push(eq(contacts.clientSubcategoryId, clientSubcategoryId));
+  if (consultantSubcategoryId) conditions.push(eq(contacts.consultantSubcategoryId, consultantSubcategoryId));
   if (contactSourceId) conditions.push(eq(contacts.contactSourceId, contactSourceId));
   if (uploadedByUserId) conditions.push(eq(contacts.uploadedByUserId, uploadedByUserId));
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
   const offset = (page - 1) * pageSize;
 
+  // Use raw SQL for multi-join on same table (subcategories)
   const [rows, countResult] = await Promise.all([
-    db.select({
-      id: contacts.id,
-      displayName: contacts.displayName,
-      firstName: contacts.firstName,
-      lastName: contacts.lastName,
-      phoneNumbers: contacts.phoneNumbers,
-      emails: contacts.emails,
-      notes: contacts.notes,
-      createdAt: contacts.createdAt,
-      updatedAt: contacts.updatedAt,
-      uploadedByUserId: contacts.uploadedByUserId,
-      regionId: contacts.regionId,
-      vendorId: contacts.vendorId,
-      vendorSubcategoryId: contacts.vendorSubcategoryId,
-      clientId: contacts.clientId,
-      clientSubcategoryId: contacts.clientSubcategoryId,
-      consultantId: contacts.consultantId,
-      contactSourceId: contacts.contactSourceId,
-      regionName: regions.name,
-      vendorName: vendors.name,
-      clientName: clients.name,
-      consultantName: consultants.name,
-      sourceName: contactSources.name,
-      uploaderName: users.name,
-    })
-      .from(contacts)
-      .leftJoin(regions, eq(contacts.regionId, regions.id))
-      .leftJoin(vendors, eq(contacts.vendorId, vendors.id))
-      .leftJoin(clients, eq(contacts.clientId, clients.id))
-      .leftJoin(consultants, eq(contacts.consultantId, consultants.id))
-      .leftJoin(contactSources, eq(contacts.contactSourceId, contactSources.id))
-      .leftJoin(users, eq(contacts.uploadedByUserId, users.id))
-      .where(whereClause)
-      .orderBy(desc(contacts.createdAt))
-      .limit(pageSize)
-      .offset(offset),
+    db.execute(sql`
+      SELECT
+        c.id, c.displayName, c.firstName, c.lastName, c.phoneNumbers, c.emails, c.notes,
+        c.createdAt, c.updatedAt, c.uploadedByUserId,
+        c.regionId, c.vendorCategoryId, c.vendorSubcategoryId,
+        c.clientCategoryId, c.clientSubcategoryId,
+        c.consultantCategoryId, c.consultantSubcategoryId,
+        c.contactSourceId,
+        r.name AS regionName,
+        vs.name AS vendorSubcategoryName,
+        cs.name AS clientSubcategoryName,
+        cts.name AS consultantSubcategoryName,
+        src.name AS sourceName,
+        u.name AS uploaderName
+      FROM contacts c
+      LEFT JOIN regions r ON c.regionId = r.id
+      LEFT JOIN subcategories vs ON c.vendorSubcategoryId = vs.id
+      LEFT JOIN subcategories cs ON c.clientSubcategoryId = cs.id
+      LEFT JOIN subcategories cts ON c.consultantSubcategoryId = cts.id
+      LEFT JOIN contact_sources src ON c.contactSourceId = src.id
+      LEFT JOIN users u ON c.uploadedByUserId = u.id
+      ${whereClause ? sql`WHERE ${whereClause}` : sql``}
+      ORDER BY c.createdAt DESC
+      LIMIT ${pageSize} OFFSET ${offset}
+    `),
     db.select({ count: sql<number>`count(*)` }).from(contacts).where(whereClause),
   ]);
 
-  return { contacts: rows, total: Number(countResult[0]?.count ?? 0) };
+  return { contacts: (rows as any[])[0] as any[], total: Number(countResult[0]?.count ?? 0) };
 }
 
 export async function getContactById(id: number) {
@@ -276,11 +208,12 @@ export async function insertContact(data: {
   phoneNumbers?: string;
   emails?: string;
   regionId?: number;
-  vendorId?: number;
+  vendorCategoryId?: number;
   vendorSubcategoryId?: number;
-  clientId?: number;
+  clientCategoryId?: number;
   clientSubcategoryId?: number;
-  consultantId?: number;
+  consultantCategoryId?: number;
+  consultantSubcategoryId?: number;
   contactSourceId?: number;
   notes?: string;
 }) {
@@ -292,11 +225,12 @@ export async function insertContact(data: {
 
 export async function updateContact(id: number, data: Partial<{
   regionId: number | null;
-  vendorId: number | null;
+  vendorCategoryId: number | null;
   vendorSubcategoryId: number | null;
-  clientId: number | null;
+  clientCategoryId: number | null;
   clientSubcategoryId: number | null;
-  consultantId: number | null;
+  consultantCategoryId: number | null;
+  consultantSubcategoryId: number | null;
   contactSourceId: number | null;
   notes: string | null;
 }>) {
@@ -315,7 +249,7 @@ export async function deleteContact(id: number) {
 
 export async function insertAuditLog(data: {
   userId: number;
-  action: "upload" | "edit" | "delete" | "create_vendor" | "create_client" | "create_consultant" | "create_subcategory";
+  action: "upload" | "edit" | "delete" | "create_subcategory" | "delete_subcategory";
   entityType: string;
   entityId?: number;
   details?: string;
@@ -367,78 +301,46 @@ export async function getReportByRegion() {
     .orderBy(desc(sql`count(*)`));
 }
 
-export async function getReportByVendor() {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select({
-    vendorId: contacts.vendorId,
-    vendorName: vendors.name,
-    count: sql<number>`count(*)`,
-  })
-    .from(contacts)
-    .leftJoin(vendors, eq(contacts.vendorId, vendors.id))
-    .groupBy(contacts.vendorId, vendors.name)
-    .orderBy(desc(sql`count(*)`));
-}
-
 export async function getReportByVendorSubcategory() {
   const db = await getDb();
   if (!db) return [];
-  return db.select({
-    vendorSubcategoryId: contacts.vendorSubcategoryId,
-    subcategoryName: vendorSubcategories.name,
-    vendorName: vendors.name,
-    count: sql<number>`count(*)`,
-  })
-    .from(contacts)
-    .leftJoin(vendorSubcategories, eq(contacts.vendorSubcategoryId, vendorSubcategories.id))
-    .leftJoin(vendors, eq(vendorSubcategories.vendorId, vendors.id))
-    .groupBy(contacts.vendorSubcategoryId, vendorSubcategories.name, vendors.name)
-    .orderBy(desc(sql`count(*)`));
-}
-
-export async function getReportByClient() {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select({
-    clientId: contacts.clientId,
-    clientName: clients.name,
-    count: sql<number>`count(*)`,
-  })
-    .from(contacts)
-    .leftJoin(clients, eq(contacts.clientId, clients.id))
-    .groupBy(contacts.clientId, clients.name)
-    .orderBy(desc(sql`count(*)`));
+  const rows = await db.execute(sql`
+    SELECT s.id AS subcategoryId, s.name AS subcategoryName, COUNT(*) AS count
+    FROM contacts c
+    LEFT JOIN subcategories s ON c.vendorSubcategoryId = s.id
+    WHERE c.vendorSubcategoryId IS NOT NULL
+    GROUP BY s.id, s.name
+    ORDER BY count DESC
+  `);
+  return (rows as any[])[0] as { subcategoryId: number; subcategoryName: string; count: number }[];
 }
 
 export async function getReportByClientSubcategory() {
   const db = await getDb();
   if (!db) return [];
-  return db.select({
-    clientSubcategoryId: contacts.clientSubcategoryId,
-    subcategoryName: clientSubcategories.name,
-    clientName: clients.name,
-    count: sql<number>`count(*)`,
-  })
-    .from(contacts)
-    .leftJoin(clientSubcategories, eq(contacts.clientSubcategoryId, clientSubcategories.id))
-    .leftJoin(clients, eq(clientSubcategories.clientId, clients.id))
-    .groupBy(contacts.clientSubcategoryId, clientSubcategories.name, clients.name)
-    .orderBy(desc(sql`count(*)`));
+  const rows = await db.execute(sql`
+    SELECT s.id AS subcategoryId, s.name AS subcategoryName, COUNT(*) AS count
+    FROM contacts c
+    LEFT JOIN subcategories s ON c.clientSubcategoryId = s.id
+    WHERE c.clientSubcategoryId IS NOT NULL
+    GROUP BY s.id, s.name
+    ORDER BY count DESC
+  `);
+  return (rows as any[])[0] as { subcategoryId: number; subcategoryName: string; count: number }[];
 }
 
-export async function getReportByConsultant() {
+export async function getReportByConsultantSubcategory() {
   const db = await getDb();
   if (!db) return [];
-  return db.select({
-    consultantId: contacts.consultantId,
-    consultantName: consultants.name,
-    count: sql<number>`count(*)`,
-  })
-    .from(contacts)
-    .leftJoin(consultants, eq(contacts.consultantId, consultants.id))
-    .groupBy(contacts.consultantId, consultants.name)
-    .orderBy(desc(sql`count(*)`));
+  const rows = await db.execute(sql`
+    SELECT s.id AS subcategoryId, s.name AS subcategoryName, COUNT(*) AS count
+    FROM contacts c
+    LEFT JOIN subcategories s ON c.consultantSubcategoryId = s.id
+    WHERE c.consultantSubcategoryId IS NOT NULL
+    GROUP BY s.id, s.name
+    ORDER BY count DESC
+  `);
+  return (rows as any[])[0] as { subcategoryId: number; subcategoryName: string; count: number }[];
 }
 
 export async function getReportBySource() {
@@ -469,17 +371,15 @@ export async function getReportUploadActivity() {
 
 export async function getOverviewStats() {
   const db = await getDb();
-  if (!db) return { totalContacts: 0, totalUsers: 0, totalVendors: 0, totalClients: 0 };
-  const [contactCount, userCount, vendorCount, clientCount] = await Promise.all([
+  if (!db) return { totalContacts: 0, totalUsers: 0, totalSubcategories: 0 };
+  const [contactCount, userCount, subcategoryCount] = await Promise.all([
     db.select({ count: sql<number>`count(*)` }).from(contacts),
     db.select({ count: sql<number>`count(*)` }).from(users),
-    db.select({ count: sql<number>`count(*)` }).from(vendors),
-    db.select({ count: sql<number>`count(*)` }).from(clients),
+    db.select({ count: sql<number>`count(*)` }).from(subcategories),
   ]);
   return {
     totalContacts: Number(contactCount[0]?.count ?? 0),
     totalUsers: Number(userCount[0]?.count ?? 0),
-    totalVendors: Number(vendorCount[0]?.count ?? 0),
-    totalClients: Number(clientCount[0]?.count ?? 0),
+    totalSubcategories: Number(subcategoryCount[0]?.count ?? 0),
   };
 }

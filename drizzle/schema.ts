@@ -5,7 +5,6 @@ import {
   text,
   timestamp,
   varchar,
-  boolean,
 } from "drizzle-orm/mysql-core";
 
 // ─── Users ────────────────────────────────────────────────────────────────────
@@ -34,50 +33,27 @@ export const regions = mysqlTable("regions", {
 
 export type Region = typeof regions.$inferSelect;
 
-// ─── Vendors ──────────────────────────────────────────────────────────────────
-export const vendors = mysqlTable("vendors", {
+// ─── Categories (Vendor / Client / Consultant — fixed system-level) ───────────
+// These are fixed top-level categories seeded at startup. Users cannot create/delete them.
+// Sub-categories under each are user-managed.
+export const categories = mysqlTable("categories", {
   id: int("id").autoincrement().primaryKey(),
+  type: mysqlEnum("type", ["vendor", "client", "consultant"]).notNull(),
   name: varchar("name", { length: 128 }).notNull().unique(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
-export type Vendor = typeof vendors.$inferSelect;
+export type Category = typeof categories.$inferSelect;
 
-export const vendorSubcategories = mysqlTable("vendor_subcategories", {
+// ─── Sub-categories (user-managed, scoped to a parent category) ───────────────
+export const subcategories = mysqlTable("subcategories", {
   id: int("id").autoincrement().primaryKey(),
-  vendorId: int("vendorId").notNull().references(() => vendors.id),
+  categoryId: int("categoryId").notNull().references(() => categories.id),
   name: varchar("name", { length: 128 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
-export type VendorSubcategory = typeof vendorSubcategories.$inferSelect;
-
-// ─── Clients ──────────────────────────────────────────────────────────────────
-export const clients = mysqlTable("clients", {
-  id: int("id").autoincrement().primaryKey(),
-  name: varchar("name", { length: 128 }).notNull().unique(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
-
-export type Client = typeof clients.$inferSelect;
-
-export const clientSubcategories = mysqlTable("client_subcategories", {
-  id: int("id").autoincrement().primaryKey(),
-  clientId: int("clientId").notNull().references(() => clients.id),
-  name: varchar("name", { length: 128 }).notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
-
-export type ClientSubcategory = typeof clientSubcategories.$inferSelect;
-
-// ─── Consultants ──────────────────────────────────────────────────────────────
-export const consultants = mysqlTable("consultants", {
-  id: int("id").autoincrement().primaryKey(),
-  name: varchar("name", { length: 128 }).notNull().unique(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
-
-export type Consultant = typeof consultants.$inferSelect;
+export type Subcategory = typeof subcategories.$inferSelect;
 
 // ─── Contact Sources ──────────────────────────────────────────────────────────
 export const contactSources = mysqlTable("contact_sources", {
@@ -98,13 +74,18 @@ export const contacts = mysqlTable("contacts", {
   displayName: varchar("displayName", { length: 256 }).notNull(),
   phoneNumbers: text("phoneNumbers"), // JSON array of strings
   emails: text("emails"),             // JSON array of strings
-  // Metadata
+  // Metadata — category + subcategory for each type
   regionId: int("regionId").references(() => regions.id),
-  vendorId: int("vendorId").references(() => vendors.id),
-  vendorSubcategoryId: int("vendorSubcategoryId").references(() => vendorSubcategories.id),
-  clientId: int("clientId").references(() => clients.id),
-  clientSubcategoryId: int("clientSubcategoryId").references(() => clientSubcategories.id),
-  consultantId: int("consultantId").references(() => consultants.id),
+  // Vendor
+  vendorCategoryId: int("vendorCategoryId").references(() => categories.id),
+  vendorSubcategoryId: int("vendorSubcategoryId").references(() => subcategories.id),
+  // Client
+  clientCategoryId: int("clientCategoryId").references(() => categories.id),
+  clientSubcategoryId: int("clientSubcategoryId").references(() => subcategories.id),
+  // Consultant
+  consultantCategoryId: int("consultantCategoryId").references(() => categories.id),
+  consultantSubcategoryId: int("consultantSubcategoryId").references(() => subcategories.id),
+  // Source & notes
   contactSourceId: int("contactSourceId").references(() => contactSources.id),
   notes: text("notes"),
   // Timestamps
@@ -119,10 +100,10 @@ export type InsertContact = typeof contacts.$inferInsert;
 export const auditLogs = mysqlTable("audit_logs", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull().references(() => users.id),
-  action: mysqlEnum("action", ["upload", "edit", "delete", "create_vendor", "create_client", "create_consultant", "create_subcategory"]).notNull(),
-  entityType: varchar("entityType", { length: 64 }).notNull(), // "contact", "vendor", etc.
+  action: mysqlEnum("action", ["upload", "edit", "delete", "create_subcategory", "delete_subcategory"]).notNull(),
+  entityType: varchar("entityType", { length: 64 }).notNull(),
   entityId: int("entityId"),
-  details: text("details"), // JSON with before/after or description
+  details: text("details"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

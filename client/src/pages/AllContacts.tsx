@@ -36,8 +36,8 @@ export default function AllContacts() {
   const metadata = useMetadata();
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<{
-    regionId?: number; vendorId?: number; clientId?: number;
-    consultantId?: number; contactSourceId?: number;
+    regionId?: number; vendorSubcategoryId?: number; clientSubcategoryId?: number;
+    consultantSubcategoryId?: number; contactSourceId?: number;
   }>({});
   const [page, setPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
@@ -102,25 +102,25 @@ export default function AllContacts() {
                   {metadata.regions.map(r => <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <Select value={filters.vendorId?.toString() ?? ""} onValueChange={v => setFilter("vendorId", v ? Number(v) : undefined)}>
+              <Select value={filters.vendorSubcategoryId?.toString() ?? ""} onValueChange={v => setFilter("vendorSubcategoryId", v ? Number(v) : undefined)}>
                 <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Vendor" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">All Vendors</SelectItem>
-                  {metadata.vendors.map(v => <SelectItem key={v.id} value={v.id.toString()}>{v.name}</SelectItem>)}
+                  {metadata.vendorSubcategories.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <Select value={filters.clientId?.toString() ?? ""} onValueChange={v => setFilter("clientId", v ? Number(v) : undefined)}>
+              <Select value={filters.clientSubcategoryId?.toString() ?? ""} onValueChange={v => setFilter("clientSubcategoryId", v ? Number(v) : undefined)}>
                 <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Client" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">All Clients</SelectItem>
-                  {metadata.clients.map(c => <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>)}
+                  {metadata.clientSubcategories.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
                 </SelectContent>
               </Select>
-              <Select value={filters.consultantId?.toString() ?? ""} onValueChange={v => setFilter("consultantId", v ? Number(v) : undefined)}>
+              <Select value={filters.consultantSubcategoryId?.toString() ?? ""} onValueChange={v => setFilter("consultantSubcategoryId", v ? Number(v) : undefined)}>
                 <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Consultant" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">All Consultants</SelectItem>
-                  {metadata.consultants.map(c => <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>)}
+                  {metadata.consultantSubcategories.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
                 </SelectContent>
               </Select>
               <Select value={filters.contactSourceId?.toString() ?? ""} onValueChange={v => setFilter("contactSourceId", v ? Number(v) : undefined)}>
@@ -170,9 +170,9 @@ export default function AllContacts() {
                         </div>
                       </TableCell>
                       <TableCell className="py-3">{c.regionName ? <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-normal">{c.regionName}</Badge> : <span className="text-muted-foreground text-xs">—</span>}</TableCell>
-                      <TableCell className="py-3 text-xs text-muted-foreground">{c.vendorName ?? "—"}</TableCell>
-                      <TableCell className="py-3 text-xs text-muted-foreground">{c.clientName ?? "—"}</TableCell>
-                      <TableCell className="py-3 text-xs text-muted-foreground">{c.consultantName ?? "—"}</TableCell>
+                      <TableCell className="py-3 text-xs text-muted-foreground">{c.vendorSubcategoryName ?? "—"}</TableCell>
+                      <TableCell className="py-3 text-xs text-muted-foreground">{c.clientSubcategoryName ?? "—"}</TableCell>
+                      <TableCell className="py-3 text-xs text-muted-foreground">{c.consultantSubcategoryName ?? "—"}</TableCell>
                       <TableCell className="py-3">{c.sourceName ? <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">{c.sourceName}</Badge> : <span className="text-muted-foreground text-xs">—</span>}</TableCell>
                       <TableCell className="py-3 text-xs text-muted-foreground">{c.uploaderName ?? "—"}</TableCell>
                     </TableRow>

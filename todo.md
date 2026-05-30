@@ -48,4 +48,13 @@
 ## Phase 2 - Milestone 3: Polish & Testing
 - [x] Responsive mobile-first polish
 - [x] Vitest unit tests for all routers (14 tests passing)
-- [ ] Final checkpoint and delivery
+- [x] Final checkpoint and delivery
+
+## Category/Subcategory Redesign (Bug Fix)
+- [x] Change Vendor, Client, Consultant to fixed top-level categories (not user-created) — remove create/delete from Admin Panel for these
+- [x] In metadata form: show Vendor / Client / Consultant as radio/pill category selectors (fixed labels), then a sub-category dropdown below each
+- [x] Sub-category dropdown is scoped to the selected category; user can create a new sub-category inline if it doesn't exist
+- [x] Update database: seed fixed categories for Vendor, Client, Consultant; sub-categories remain user-managed
+- [x] Update Admin Panel: only manage sub-categories (not the parent categories themselves)
+- [x] Update AllContacts filters to reflect the new category/subcategory model
+- [x] Update Reports to reflect the new model

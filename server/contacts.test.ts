@@ -4,41 +4,36 @@ import type { TrpcContext } from "./_core/context";
 
 // ─── Mock DB ──────────────────────────────────────────────────────────────────
 vi.mock("./db", () => ({
+  // Contact CRUD
   getContacts: vi.fn().mockResolvedValue({ contacts: [], total: 0 }),
   getContactById: vi.fn().mockResolvedValue(null),
   insertContact: vi.fn().mockResolvedValue({ id: 1 }),
   updateContact: vi.fn().mockResolvedValue(undefined),
   deleteContact: vi.fn().mockResolvedValue(undefined),
   insertAuditLog: vi.fn().mockResolvedValue(undefined),
+  // Metadata — new unified model
   getAllRegions: vi.fn().mockResolvedValue([]),
-  getAllVendors: vi.fn().mockResolvedValue([]),
-  getAllVendorSubcategories: vi.fn().mockResolvedValue([]),
-  getAllClients: vi.fn().mockResolvedValue([]),
-  getAllClientSubcategories: vi.fn().mockResolvedValue([]),
-  getAllConsultants: vi.fn().mockResolvedValue([]),
+  getAllCategories: vi.fn().mockResolvedValue([
+    { id: 1, type: "vendor", name: "Vendor", createdAt: new Date() },
+    { id: 2, type: "client", name: "Client", createdAt: new Date() },
+    { id: 3, type: "consultant", name: "Consultant", createdAt: new Date() },
+  ]),
+  getAllSubcategories: vi.fn().mockResolvedValue([]),
+  getSubcategoriesByCategoryId: vi.fn().mockResolvedValue([]),
   getAllContactSources: vi.fn().mockResolvedValue([]),
-  getVendorSubcategories: vi.fn().mockResolvedValue([]),
-  getClientSubcategories: vi.fn().mockResolvedValue([]),
-  createVendor: vi.fn().mockResolvedValue({ id: 10, name: "Test Vendor" }),
-  createVendorSubcategory: vi.fn().mockResolvedValue({ id: 20, name: "Test Sub" }),
-  createClient: vi.fn().mockResolvedValue({ id: 30, name: "Test Client" }),
-  createClientSubcategory: vi.fn().mockResolvedValue({ id: 40, name: "Test Client Sub" }),
-  createConsultant: vi.fn().mockResolvedValue({ id: 50, name: "Test Consultant" }),
-  deleteVendor: vi.fn().mockResolvedValue(undefined),
-  deleteVendorSubcategory: vi.fn().mockResolvedValue(undefined),
-  deleteClient: vi.fn().mockResolvedValue(undefined),
-  deleteClientSubcategory: vi.fn().mockResolvedValue(undefined),
-  deleteConsultant: vi.fn().mockResolvedValue(undefined),
+  createSubcategory: vi.fn().mockResolvedValue({ id: 10, categoryId: 1, name: "Test Sub", createdAt: new Date() }),
+  deleteSubcategory: vi.fn().mockResolvedValue(undefined),
+  getCategoryByType: vi.fn().mockResolvedValue({ id: 1, type: "vendor", name: "Vendor", createdAt: new Date() }),
+  // Reports
   getAuditLogs: vi.fn().mockResolvedValue({ logs: [], total: 0 }),
-  getOverviewStats: vi.fn().mockResolvedValue({ totalContacts: 0, totalUsers: 0, totalVendors: 0, totalClients: 0 }),
+  getOverviewStats: vi.fn().mockResolvedValue({ totalContacts: 0, totalUsers: 0, totalSubcategories: 0 }),
   getReportByRegion: vi.fn().mockResolvedValue([]),
-  getReportByVendor: vi.fn().mockResolvedValue([]),
   getReportByVendorSubcategory: vi.fn().mockResolvedValue([]),
-  getReportByClient: vi.fn().mockResolvedValue([]),
   getReportByClientSubcategory: vi.fn().mockResolvedValue([]),
-  getReportByConsultant: vi.fn().mockResolvedValue([]),
+  getReportByConsultantSubcategory: vi.fn().mockResolvedValue([]),
   getReportBySource: vi.fn().mockResolvedValue([]),
   getReportUploadActivity: vi.fn().mockResolvedValue([]),
+  // Auth
   upsertUser: vi.fn().mockResolvedValue(undefined),
   getUserByOpenId: vi.fn().mockResolvedValue(undefined),
   getDb: vi.fn().mockResolvedValue(null),
@@ -131,19 +126,19 @@ describe("metadata.getAll", () => {
     const caller = appRouter.createCaller(makeCtx());
     const result = await caller.metadata.getAll();
     expect(result).toHaveProperty("regions");
-    expect(result).toHaveProperty("vendors");
-    expect(result).toHaveProperty("clients");
-    expect(result).toHaveProperty("consultants");
+    expect(result).toHaveProperty("categories");
+    expect(result).toHaveProperty("subcategories");
     expect(result).toHaveProperty("contactSources");
   });
 });
 
-describe("metadata.createVendor", () => {
-  it("creates a vendor for authenticated user", async () => {
+describe("metadata.createSubcategory", () => {
+  it("creates a subcategory for authenticated user", async () => {
+    // categoryId 1 = Vendor (seeded in DB)
     const caller = appRouter.createCaller(makeCtx());
-    const result = await caller.metadata.createVendor({ name: "Test Vendor" });
+    const result = await caller.metadata.createSubcategory({ categoryId: 1, name: `TestSub-${Date.now()}` });
     expect(result).toHaveProperty("id");
-    expect(result.name).toBe("Test Vendor");
+    expect(result).toHaveProperty("name");
   });
 });
 

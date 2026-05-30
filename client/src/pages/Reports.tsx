@@ -85,20 +85,18 @@ function ChartCard({ title, description, data, type, dataKey, nameKey, onExport,
 export default function Reports() {
   const { data: overview, isLoading: l0 } = trpc.reports.overview.useQuery();
   const { data: byRegion = [], isLoading: l1 } = trpc.reports.byRegion.useQuery();
-  const { data: byVendor = [], isLoading: l2 } = trpc.reports.byVendor.useQuery();
   const { data: byVendorSub = [], isLoading: l3 } = trpc.reports.byVendorSubcategory.useQuery();
-  const { data: byClient = [], isLoading: l4 } = trpc.reports.byClient.useQuery();
   const { data: byClientSub = [], isLoading: l5 } = trpc.reports.byClientSubcategory.useQuery();
-  const { data: byConsultant = [], isLoading: l6 } = trpc.reports.byConsultant.useQuery();
+  const { data: byConsultantSub = [], isLoading: l6 } = trpc.reports.byConsultantSubcategory.useQuery();
   const { data: bySource = [], isLoading: l7 } = trpc.reports.bySource.useQuery();
   const { data: byActivity = [], isLoading: l8 } = trpc.reports.uploadActivity.useQuery();
-  const isLoading = l0 || l1 || l2 || l3 || l4 || l5 || l6 || l7 || l8;
+  const isLoading = l0 || l1 || l3 || l5 || l6 || l7 || l8;
 
   const summaryCards = [
     { label: "Total Contacts", value: overview?.totalContacts ?? 0, icon: Users },
     { label: "Regions Covered", value: byRegion.length, icon: BarChart3 },
-    { label: "Active Vendors", value: byVendor.length, icon: TrendingUp },
-    { label: "Active Clients", value: byClient.length, icon: PieChart },
+    { label: "Vendor Sub-Categories", value: byVendorSub.length, icon: TrendingUp },
+    { label: "Client Sub-Categories", value: byClientSub.length, icon: PieChart },
   ];
 
   return (
@@ -138,9 +136,6 @@ export default function Reports() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <ChartCard title="By Region" description="Contact distribution across regions" data={byRegion} type="bar" dataKey="count" nameKey="name" onExport={() => exportChartCSV(byRegion, "contacts-by-region.csv")} isLoading={isLoading} />
             <ChartCard title="By Source" description="How contacts were sourced" data={bySource} type="pie" dataKey="count" nameKey="name" onExport={() => exportChartCSV(bySource, "contacts-by-source.csv")} isLoading={isLoading} />
-            <ChartCard title="By Vendor" description="Contacts associated with vendors" data={byVendor} type="bar" dataKey="count" nameKey="name" onExport={() => exportChartCSV(byVendor, "contacts-by-vendor.csv")} isLoading={isLoading} />
-            <ChartCard title="By Client" description="Contacts associated with clients" data={byClient} type="bar" dataKey="count" nameKey="name" onExport={() => exportChartCSV(byClient, "contacts-by-client.csv")} isLoading={isLoading} />
-            <ChartCard title="By Consultant" description="Contacts per consultant" data={byConsultant} type="bar" dataKey="count" nameKey="name" onExport={() => exportChartCSV(byConsultant, "contacts-by-consultant.csv")} isLoading={isLoading} />
           </div>
         </TabsContent>
 
@@ -148,6 +143,7 @@ export default function Reports() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <ChartCard title="By Vendor Sub-Category" description="Breakdown within vendor categories" data={byVendorSub} type="bar" dataKey="count" nameKey="name" onExport={() => exportChartCSV(byVendorSub, "contacts-by-vendor-sub.csv")} isLoading={isLoading} />
             <ChartCard title="By Client Sub-Category" description="Breakdown within client categories" data={byClientSub} type="bar" dataKey="count" nameKey="name" onExport={() => exportChartCSV(byClientSub, "contacts-by-client-sub.csv")} isLoading={isLoading} />
+            <ChartCard title="By Consultant Sub-Category" description="Contacts per consultant type" data={byConsultantSub} type="bar" dataKey="count" nameKey="name" onExport={() => exportChartCSV(byConsultantSub, "contacts-by-consultant-sub.csv")} isLoading={isLoading} />
           </div>
         </TabsContent>
 

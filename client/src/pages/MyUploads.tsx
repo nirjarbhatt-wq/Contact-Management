@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Phone, Mail, Search, Pencil, Trash2, ContactRound, ChevronLeft, ChevronRight } from "lucide-react";
@@ -21,31 +21,34 @@ type ContactRow = {
   phoneNumbers: string | null;
   emails: string | null;
   regionName: string | null;
-  vendorName: string | null;
-  clientName: string | null;
-  consultantName: string | null;
+  vendorSubcategoryName: string | null;
+  clientSubcategoryName: string | null;
+  consultantSubcategoryName: string | null;
   sourceName: string | null;
   notes: string | null;
   createdAt: Date;
   regionId: number | null;
-  vendorId: number | null;
+  vendorCategoryId: number | null;
   vendorSubcategoryId: number | null;
-  clientId: number | null;
+  clientCategoryId: number | null;
   clientSubcategoryId: number | null;
-  consultantId: number | null;
+  consultantCategoryId: number | null;
+  consultantSubcategoryId: number | null;
   contactSourceId: number | null;
 };
 
 function EditDialog({ contact, onClose }: { contact: ContactRow; onClose: () => void }) {
   const metadata = useMetadata();
   const utils = trpc.useUtils();
+
   const [form, setForm] = useState({
     regionId: contact.regionId ?? undefined as number | undefined,
-    vendorId: contact.vendorId ?? undefined as number | undefined,
+    vendorCategoryId: contact.vendorCategoryId ?? undefined as number | undefined,
     vendorSubcategoryId: contact.vendorSubcategoryId ?? undefined as number | undefined,
-    clientId: contact.clientId ?? undefined as number | undefined,
+    clientCategoryId: contact.clientCategoryId ?? undefined as number | undefined,
     clientSubcategoryId: contact.clientSubcategoryId ?? undefined as number | undefined,
-    consultantId: contact.consultantId ?? undefined as number | undefined,
+    consultantCategoryId: contact.consultantCategoryId ?? undefined as number | undefined,
+    consultantSubcategoryId: contact.consultantSubcategoryId ?? undefined as number | undefined,
     contactSourceId: contact.contactSourceId ?? undefined as number | undefined,
     notes: contact.notes ?? "",
   });
@@ -58,9 +61,6 @@ function EditDialog({ contact, onClose }: { contact: ContactRow; onClose: () => 
     },
     onError: () => toast.error("Update failed"),
   });
-
-  const filteredVendorSubs = useMemo(() => metadata.vendorSubcategories.filter(s => s.vendorId === form.vendorId), [metadata.vendorSubcategories, form.vendorId]);
-  const filteredClientSubs = useMemo(() => metadata.clientSubcategories.filter(s => s.clientId === form.clientId), [metadata.clientSubcategories, form.clientId]);
 
   const regionGroups = useMemo(() => ({
     international: metadata.regions.filter(r => r.category === "international"),
@@ -76,66 +76,107 @@ function EditDialog({ contact, onClose }: { contact: ContactRow; onClose: () => 
           <p className="text-sm text-muted-foreground">{contact.displayName}</p>
         </DialogHeader>
         <div className="space-y-3 py-2">
+          {/* Region */}
           <div className="space-y-1.5">
             <Label className="text-xs">Region</Label>
             <Select value={form.regionId?.toString() ?? ""} onValueChange={v => setForm(f => ({ ...f, regionId: v ? Number(v) : undefined }))}>
               <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select region" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="none_int" disabled className="text-muted-foreground text-xs">— International —</SelectItem>
+                <SelectItem value="_intl" disabled className="text-muted-foreground text-xs">— International —</SelectItem>
                 {regionGroups.international.map(r => <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>)}
-                <SelectItem value="none_st" disabled className="text-muted-foreground text-xs">— Indian States —</SelectItem>
+                <SelectItem value="_states" disabled className="text-muted-foreground text-xs">— Indian States —</SelectItem>
                 {regionGroups.states.map(r => <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>)}
-                <SelectItem value="none_ut" disabled className="text-muted-foreground text-xs">— Union Territories —</SelectItem>
+                <SelectItem value="_uts" disabled className="text-muted-foreground text-xs">— Union Territories —</SelectItem>
                 {regionGroups.uts.map(r => <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Vendor</Label>
-              <Select value={form.vendorId?.toString() ?? ""} onValueChange={v => setForm(f => ({ ...f, vendorId: v ? Number(v) : undefined, vendorSubcategoryId: undefined }))}>
-                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select vendor" /></SelectTrigger>
-                <SelectContent>{metadata.vendors.map(v => <SelectItem key={v.id} value={v.id.toString()}>{v.name}</SelectItem>)}</SelectContent>
+
+          {/* Vendor Sub-Category */}
+          {metadata.vendorCategory && (
+            <div className="rounded-lg border p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-blue-500/80" />
+                <span className="text-xs font-semibold uppercase tracking-wide">Vendor Sub-Category</span>
+              </div>
+              <Select
+                value={form.vendorSubcategoryId?.toString() ?? ""}
+                onValueChange={v => setForm(f => ({
+                  ...f,
+                  vendorCategoryId: v ? metadata.vendorCategory!.id : undefined,
+                  vendorSubcategoryId: v ? Number(v) : undefined,
+                }))}
+              >
+                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select vendor sub-category" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">— None —</SelectItem>
+                  {metadata.vendorSubcategories.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
+                </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Vendor Sub-Category</Label>
-              <Select value={form.vendorSubcategoryId?.toString() ?? ""} onValueChange={v => setForm(f => ({ ...f, vendorSubcategoryId: v ? Number(v) : undefined }))} disabled={!form.vendorId}>
-                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Sub-category" /></SelectTrigger>
-                <SelectContent>{filteredVendorSubs.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}</SelectContent>
+          )}
+
+          {/* Client Sub-Category */}
+          {metadata.clientCategory && (
+            <div className="rounded-lg border p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-500/80" />
+                <span className="text-xs font-semibold uppercase tracking-wide">Client Sub-Category</span>
+              </div>
+              <Select
+                value={form.clientSubcategoryId?.toString() ?? ""}
+                onValueChange={v => setForm(f => ({
+                  ...f,
+                  clientCategoryId: v ? metadata.clientCategory!.id : undefined,
+                  clientSubcategoryId: v ? Number(v) : undefined,
+                }))}
+              >
+                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select client sub-category" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">— None —</SelectItem>
+                  {metadata.clientSubcategories.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
+                </SelectContent>
               </Select>
             </div>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Client</Label>
-              <Select value={form.clientId?.toString() ?? ""} onValueChange={v => setForm(f => ({ ...f, clientId: v ? Number(v) : undefined, clientSubcategoryId: undefined }))}>
-                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select client" /></SelectTrigger>
-                <SelectContent>{metadata.clients.map(c => <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>)}</SelectContent>
+          )}
+
+          {/* Consultant Sub-Category */}
+          {metadata.consultantCategory && (
+            <div className="rounded-lg border p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-violet-500/80" />
+                <span className="text-xs font-semibold uppercase tracking-wide">Consultant Sub-Category</span>
+              </div>
+              <Select
+                value={form.consultantSubcategoryId?.toString() ?? ""}
+                onValueChange={v => setForm(f => ({
+                  ...f,
+                  consultantCategoryId: v ? metadata.consultantCategory!.id : undefined,
+                  consultantSubcategoryId: v ? Number(v) : undefined,
+                }))}
+              >
+                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select consultant sub-category" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">— None —</SelectItem>
+                  {metadata.consultantSubcategories.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
+                </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Client Sub-Category</Label>
-              <Select value={form.clientSubcategoryId?.toString() ?? ""} onValueChange={v => setForm(f => ({ ...f, clientSubcategoryId: v ? Number(v) : undefined }))} disabled={!form.clientId}>
-                <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Sub-category" /></SelectTrigger>
-                <SelectContent>{filteredClientSubs.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Consultant</Label>
-            <Select value={form.consultantId?.toString() ?? ""} onValueChange={v => setForm(f => ({ ...f, consultantId: v ? Number(v) : undefined }))}>
-              <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select consultant" /></SelectTrigger>
-              <SelectContent>{metadata.consultants.map(c => <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>)}</SelectContent>
-            </Select>
-          </div>
+          )}
+
+          {/* Source */}
           <div className="space-y-1.5">
             <Label className="text-xs">Source of Contact</Label>
             <Select value={form.contactSourceId?.toString() ?? ""} onValueChange={v => setForm(f => ({ ...f, contactSourceId: v ? Number(v) : undefined }))}>
               <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select source" /></SelectTrigger>
-              <SelectContent>{metadata.contactSources.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}</SelectContent>
+              <SelectContent>
+                <SelectItem value="">— None —</SelectItem>
+                {metadata.contactSources.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
+              </SelectContent>
             </Select>
           </div>
+
+          {/* Notes */}
           <div className="space-y-1.5">
             <Label className="text-xs">Notes</Label>
             <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} className="resize-none text-sm" />
@@ -206,6 +247,7 @@ export default function MyUploads() {
                   <TableHead className="text-xs">Region</TableHead>
                   <TableHead className="text-xs">Vendor</TableHead>
                   <TableHead className="text-xs">Client</TableHead>
+                  <TableHead className="text-xs">Consultant</TableHead>
                   <TableHead className="text-xs">Source</TableHead>
                   <TableHead className="text-xs w-20">Actions</TableHead>
                 </TableRow>
@@ -213,7 +255,7 @@ export default function MyUploads() {
               <TableBody>
                 {isLoading && Array.from({ length: 5 }).map((_, i) => (
                   <TableRow key={i}>
-                    {Array.from({ length: 7 }).map((_, j) => (
+                    {Array.from({ length: 8 }).map((_, j) => (
                       <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                     ))}
                   </TableRow>
@@ -231,8 +273,9 @@ export default function MyUploads() {
                         </div>
                       </TableCell>
                       <TableCell className="py-3">{c.regionName ? <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-normal">{c.regionName}</Badge> : <span className="text-muted-foreground text-xs">—</span>}</TableCell>
-                      <TableCell className="py-3 text-xs text-muted-foreground">{c.vendorName ?? "—"}</TableCell>
-                      <TableCell className="py-3 text-xs text-muted-foreground">{c.clientName ?? "—"}</TableCell>
+                      <TableCell className="py-3 text-xs text-muted-foreground">{c.vendorSubcategoryName ?? "—"}</TableCell>
+                      <TableCell className="py-3 text-xs text-muted-foreground">{c.clientSubcategoryName ?? "—"}</TableCell>
+                      <TableCell className="py-3 text-xs text-muted-foreground">{c.consultantSubcategoryName ?? "—"}</TableCell>
                       <TableCell className="py-3">{c.sourceName ? <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">{c.sourceName}</Badge> : <span className="text-muted-foreground text-xs">—</span>}</TableCell>
                       <TableCell className="py-3">
                         <div className="flex items-center gap-1">
@@ -249,7 +292,7 @@ export default function MyUploads() {
                 })}
                 {!isLoading && contacts.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-12">
+                    <TableCell colSpan={8} className="text-center py-12">
                       <ContactRound className="w-10 h-10 text-muted-foreground/30 mx-auto mb-2" />
                       <p className="text-sm text-muted-foreground">No contacts uploaded yet</p>
                     </TableCell>

@@ -15,7 +15,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
   ChevronLeft, ChevronRight, Phone, Mail, Search, Upload,
-  UserPlus, Check, X, Plus, Smartphone, Users
+  Check, Plus, Smartphone, Users
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -30,11 +30,12 @@ type DeviceContact = {
 
 type ContactMetadata = {
   regionId?: number;
-  vendorId?: number;
+  vendorCategoryId?: number;
   vendorSubcategoryId?: number;
-  clientId?: number;
+  clientCategoryId?: number;
   clientSubcategoryId?: number;
-  consultantId?: number;
+  consultantCategoryId?: number;
+  consultantSubcategoryId?: number;
   contactSourceId?: number;
   notes?: string;
 };
@@ -55,56 +56,31 @@ const SAMPLE_CONTACTS: DeviceContact[] = [
   { id: "12", displayName: "Pooja Mehta", firstName: "Pooja", lastName: "Mehta", phoneNumbers: ["+91 70654 32109"], emails: ["pooja.mehta@corp.com"] },
 ];
 
-// ─── Inline Create Dialog ─────────────────────────────────────────────────────
-function CreateEntityDialog({
-  open, onClose, title, onCreated, parentLabel, parentOptions, isSubcategory
+// ─── Inline Create Subcategory Dialog ─────────────────────────────────────────
+function CreateSubcategoryDialog({
+  open, onClose, categoryId, categoryName, onCreated,
 }: {
   open: boolean;
   onClose: () => void;
-  title: string;
-  onCreated: (id: number, name: string, parentId?: number) => void;
-  parentLabel?: string;
-  parentOptions?: { id: number; name: string }[];
-  isSubcategory?: boolean;
+  categoryId: number;
+  categoryName: string;
+  onCreated: (id: number, name: string) => void;
 }) {
   const [name, setName] = useState("");
-  const [parentId, setParentId] = useState<number | undefined>();
   const { refetch } = useMetadata();
-
-  const createVendor = trpc.metadata.createVendor.useMutation();
-  const createVendorSub = trpc.metadata.createVendorSubcategory.useMutation();
-  const createClient = trpc.metadata.createClient.useMutation();
-  const createClientSub = trpc.metadata.createClientSubcategory.useMutation();
-  const createConsultant = trpc.metadata.createConsultant.useMutation();
+  const createSub = trpc.metadata.createSubcategory.useMutation();
 
   const handleCreate = async () => {
     if (!name.trim()) return;
     try {
-      let id: number;
-      if (title.includes("Vendor Sub")) {
-        const r = await createVendorSub.mutateAsync({ vendorId: parentId!, name: name.trim() });
-        id = r.id;
-      } else if (title.includes("Client Sub")) {
-        const r = await createClientSub.mutateAsync({ clientId: parentId!, name: name.trim() });
-        id = r.id;
-      } else if (title.includes("Vendor")) {
-        const r = await createVendor.mutateAsync({ name: name.trim() });
-        id = r.id;
-      } else if (title.includes("Client")) {
-        const r = await createClient.mutateAsync({ name: name.trim() });
-        id = r.id;
-      } else {
-        const r = await createConsultant.mutateAsync({ name: name.trim() });
-        id = r.id;
-      }
+      const result = await createSub.mutateAsync({ categoryId, name: name.trim() });
       await refetch();
-      onCreated(id, name.trim(), parentId);
+      onCreated(result.id, name.trim());
       setName("");
-      setParentId(undefined);
       onClose();
-      toast.success(`${title} created`);
+      toast.success(`Sub-category "${name.trim()}" created under ${categoryName}`);
     } catch {
-      toast.error("Failed to create. Name may already exist.");
+      toast.error("Failed to create sub-category. Name may already exist.");
     }
   };
 
@@ -112,54 +88,114 @@ function CreateEntityDialog({
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Create {title}</DialogTitle>
+          <DialogTitle>Add Sub-Category under {categoryName}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3 py-2">
-          {isSubcategory && parentOptions && (
-            <div className="space-y-1.5">
-              <Label>{parentLabel}</Label>
-              <Select value={parentId?.toString()} onValueChange={v => setParentId(Number(v))}>
-                <SelectTrigger><SelectValue placeholder={`Select ${parentLabel}`} /></SelectTrigger>
-                <SelectContent>
-                  {parentOptions.map(o => <SelectItem key={o.id} value={o.id.toString()}>{o.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
           <div className="space-y-1.5">
-            <Label>Name</Label>
-            <Input value={name} onChange={e => setName(e.target.value)} placeholder={`Enter ${title} name`} onKeyDown={e => e.key === "Enter" && handleCreate()} />
+            <Label>Sub-Category Name</Label>
+            <Input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder={`e.g. Flow Meter, OEM, Senior Consultant…`}
+              onKeyDown={e => e.key === "Enter" && handleCreate()}
+              autoFocus
+            />
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleCreate} disabled={!name.trim() || (isSubcategory && !parentId)}>Create</Button>
+          <Button onClick={handleCreate} disabled={!name.trim() || createSub.isPending}>
+            {createSub.isPending ? "Creating…" : "Create"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
+// ─── Category + Subcategory Selector ─────────────────────────────────────────
+// Category is shown as a radio-style button group (fixed, always present).
+// Subcategory is a dropdown that filters by selected category.
+function CategorySubcategoryField({
+  label,
+  categoryId,
+  subcategories,
+  selectedSubcategoryId,
+  onSubcategoryChange,
+}: {
+  label: string;
+  categoryId: number;
+  subcategories: { id: number; name: string; categoryId: number }[];
+  selectedSubcategoryId?: number;
+  onSubcategoryChange: (id: number | undefined) => void;
+}) {
+  const [createOpen, setCreateOpen] = useState(false);
+  const { refetch } = useMetadata();
+  const filtered = subcategories.filter(s => s.categoryId === categoryId);
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <Label className="text-xs font-medium">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-primary/60 inline-block" />
+            {label} Sub-Category
+          </span>
+        </Label>
+        <button
+          type="button"
+          onClick={() => setCreateOpen(true)}
+          className="text-xs text-primary hover:text-primary/80 flex items-center gap-0.5 transition-colors"
+          title={`Add new ${label} sub-category`}
+        >
+          <Plus className="w-3 h-3" /> New
+        </button>
+      </div>
+      <Select
+        value={selectedSubcategoryId?.toString() ?? ""}
+        onValueChange={v => onSubcategoryChange(v ? Number(v) : undefined)}
+      >
+        <SelectTrigger className="h-9 text-sm">
+          <SelectValue placeholder={`Select ${label} sub-category`} />
+        </SelectTrigger>
+        <SelectContent>
+          {filtered.length === 0 ? (
+            <div className="px-3 py-2 text-xs text-muted-foreground text-center">
+              No sub-categories yet — click "+ New" to add one
+            </div>
+          ) : (
+            filtered.map(s => (
+              <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
+            ))
+          )}
+        </SelectContent>
+      </Select>
+      <CreateSubcategoryDialog
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        categoryId={categoryId}
+        categoryName={label}
+        onCreated={(id) => {
+          onSubcategoryChange(id);
+          refetch();
+        }}
+      />
+    </div>
+  );
+}
+
 // ─── Metadata Form ────────────────────────────────────────────────────────────
 function MetadataForm({
-  contact, metadata: m, value, onChange
+  contact,
+  metadata: m,
+  value,
+  onChange,
 }: {
   contact: DeviceContact;
   metadata: ReturnType<typeof useMetadata>;
   value: ContactMetadata;
   onChange: (v: ContactMetadata) => void;
 }) {
-  const [createDialog, setCreateDialog] = useState<string | null>(null);
-
-  const filteredVendorSubs = useMemo(
-    () => m.vendorSubcategories.filter(s => s.vendorId === value.vendorId),
-    [m.vendorSubcategories, value.vendorId]
-  );
-  const filteredClientSubs = useMemo(
-    () => m.clientSubcategories.filter(s => s.clientId === value.clientId),
-    [m.clientSubcategories, value.clientId]
-  );
-
   const regionGroups = useMemo(() => ({
     international: m.regions.filter(r => r.category === "international"),
     states: m.regions.filter(r => r.category === "indian_state"),
@@ -168,6 +204,7 @@ function MetadataForm({
 
   return (
     <div className="space-y-4">
+      {/* Contact summary */}
       <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 border">
         <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-primary font-semibold text-sm">
           {contact.displayName.charAt(0).toUpperCase()}
@@ -179,112 +216,96 @@ function MetadataForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3">
+      <div className="grid grid-cols-1 gap-4">
         {/* Region */}
         <div className="space-y-1.5">
           <Label className="text-xs font-medium">Region</Label>
-          <Select value={value.regionId?.toString() ?? ""} onValueChange={v => onChange({ ...value, regionId: v ? Number(v) : undefined })}>
+          <Select
+            value={value.regionId?.toString() ?? ""}
+            onValueChange={v => onChange({ ...value, regionId: v ? Number(v) : undefined })}
+          >
             <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select region" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="none" disabled className="text-muted-foreground text-xs">— International —</SelectItem>
+              <SelectItem value="_intl_header" disabled className="text-muted-foreground text-xs font-semibold">— International —</SelectItem>
               {regionGroups.international.map(r => <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>)}
-              <SelectItem value="none2" disabled className="text-muted-foreground text-xs">— Indian States —</SelectItem>
+              <SelectItem value="_states_header" disabled className="text-muted-foreground text-xs font-semibold">— Indian States —</SelectItem>
               {regionGroups.states.map(r => <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>)}
-              <SelectItem value="none3" disabled className="text-muted-foreground text-xs">— Union Territories —</SelectItem>
+              <SelectItem value="_uts_header" disabled className="text-muted-foreground text-xs font-semibold">— Union Territories —</SelectItem>
               {regionGroups.uts.map(r => <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
 
-        {/* Vendor + Sub */}
-        <div className="grid grid-cols-2 gap-2">
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs font-medium">Vendor</Label>
-              <button onClick={() => setCreateDialog("vendor")} className="text-primary hover:text-primary/80 transition-colors">
-                <Plus className="w-3.5 h-3.5" />
-              </button>
+        {/* Vendor — fixed category bullet + subcategory dropdown */}
+        {m.vendorCategory && (
+          <div className="rounded-lg border p-3 space-y-2 bg-card">
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full bg-blue-500/80" />
+              <span className="text-xs font-semibold text-foreground/80 uppercase tracking-wide">Vendor</span>
             </div>
-            <Select value={value.vendorId?.toString() ?? ""} onValueChange={v => onChange({ ...value, vendorId: v ? Number(v) : undefined, vendorSubcategoryId: undefined })}>
-              <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select vendor" /></SelectTrigger>
-              <SelectContent>
-                {m.vendors.map(v => <SelectItem key={v.id} value={v.id.toString()}>{v.name}</SelectItem>)}
-                {m.vendors.length === 0 && <SelectItem value="empty" disabled>No vendors yet</SelectItem>}
-              </SelectContent>
-            </Select>
+            <CategorySubcategoryField
+              label="Vendor"
+              categoryId={m.vendorCategory.id}
+              subcategories={m.subcategories}
+              selectedSubcategoryId={value.vendorSubcategoryId}
+              onSubcategoryChange={id => onChange({
+                ...value,
+                vendorCategoryId: id ? m.vendorCategory!.id : undefined,
+                vendorSubcategoryId: id,
+              })}
+            />
           </div>
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs font-medium">Vendor Sub-Category</Label>
-              <button onClick={() => setCreateDialog("vendor_sub")} className="text-primary hover:text-primary/80 transition-colors">
-                <Plus className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            <Select value={value.vendorSubcategoryId?.toString() ?? ""} onValueChange={v => onChange({ ...value, vendorSubcategoryId: v ? Number(v) : undefined })} disabled={!value.vendorId}>
-              <SelectTrigger className="h-9 text-sm"><SelectValue placeholder={value.vendorId ? "Select sub-category" : "Select vendor first"} /></SelectTrigger>
-              <SelectContent>
-                {filteredVendorSubs.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
-                {filteredVendorSubs.length === 0 && <SelectItem value="empty" disabled>No sub-categories yet</SelectItem>}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+        )}
 
-        {/* Client + Sub */}
-        <div className="grid grid-cols-2 gap-2">
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs font-medium">Client</Label>
-              <button onClick={() => setCreateDialog("client")} className="text-primary hover:text-primary/80 transition-colors">
-                <Plus className="w-3.5 h-3.5" />
-              </button>
+        {/* Client — fixed category bullet + subcategory dropdown */}
+        {m.clientCategory && (
+          <div className="rounded-lg border p-3 space-y-2 bg-card">
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500/80" />
+              <span className="text-xs font-semibold text-foreground/80 uppercase tracking-wide">Client</span>
             </div>
-            <Select value={value.clientId?.toString() ?? ""} onValueChange={v => onChange({ ...value, clientId: v ? Number(v) : undefined, clientSubcategoryId: undefined })}>
-              <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select client" /></SelectTrigger>
-              <SelectContent>
-                {m.clients.map(c => <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>)}
-                {m.clients.length === 0 && <SelectItem value="empty" disabled>No clients yet</SelectItem>}
-              </SelectContent>
-            </Select>
+            <CategorySubcategoryField
+              label="Client"
+              categoryId={m.clientCategory.id}
+              subcategories={m.subcategories}
+              selectedSubcategoryId={value.clientSubcategoryId}
+              onSubcategoryChange={id => onChange({
+                ...value,
+                clientCategoryId: id ? m.clientCategory!.id : undefined,
+                clientSubcategoryId: id,
+              })}
+            />
           </div>
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs font-medium">Client Sub-Category</Label>
-              <button onClick={() => setCreateDialog("client_sub")} className="text-primary hover:text-primary/80 transition-colors">
-                <Plus className="w-3.5 h-3.5" />
-              </button>
+        )}
+
+        {/* Consultant — fixed category bullet + subcategory dropdown */}
+        {m.consultantCategory && (
+          <div className="rounded-lg border p-3 space-y-2 bg-card">
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full bg-violet-500/80" />
+              <span className="text-xs font-semibold text-foreground/80 uppercase tracking-wide">Consultant</span>
             </div>
-            <Select value={value.clientSubcategoryId?.toString() ?? ""} onValueChange={v => onChange({ ...value, clientSubcategoryId: v ? Number(v) : undefined })} disabled={!value.clientId}>
-              <SelectTrigger className="h-9 text-sm"><SelectValue placeholder={value.clientId ? "Select sub-category" : "Select client first"} /></SelectTrigger>
-              <SelectContent>
-                {filteredClientSubs.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
-                {filteredClientSubs.length === 0 && <SelectItem value="empty" disabled>No sub-categories yet</SelectItem>}
-              </SelectContent>
-            </Select>
+            <CategorySubcategoryField
+              label="Consultant"
+              categoryId={m.consultantCategory.id}
+              subcategories={m.subcategories}
+              selectedSubcategoryId={value.consultantSubcategoryId}
+              onSubcategoryChange={id => onChange({
+                ...value,
+                consultantCategoryId: id ? m.consultantCategory!.id : undefined,
+                consultantSubcategoryId: id,
+              })}
+            />
           </div>
-        </div>
+        )}
 
-        {/* Consultant */}
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
-            <Label className="text-xs font-medium">Consultant</Label>
-            <button onClick={() => setCreateDialog("consultant")} className="text-primary hover:text-primary/80 transition-colors">
-              <Plus className="w-3.5 h-3.5" />
-            </button>
-          </div>
-          <Select value={value.consultantId?.toString() ?? ""} onValueChange={v => onChange({ ...value, consultantId: v ? Number(v) : undefined })}>
-            <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select consultant" /></SelectTrigger>
-            <SelectContent>
-              {m.consultants.map(c => <SelectItem key={c.id} value={c.id.toString()}>{c.name}</SelectItem>)}
-              {m.consultants.length === 0 && <SelectItem value="empty" disabled>No consultants yet</SelectItem>}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Source */}
+        {/* Source of Contact */}
         <div className="space-y-1.5">
           <Label className="text-xs font-medium">Source of Contact</Label>
-          <Select value={value.contactSourceId?.toString() ?? ""} onValueChange={v => onChange({ ...value, contactSourceId: v ? Number(v) : undefined })}>
+          <Select
+            value={value.contactSourceId?.toString() ?? ""}
+            onValueChange={v => onChange({ ...value, contactSourceId: v ? Number(v) : undefined })}
+          >
             <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select source" /></SelectTrigger>
             <SelectContent>
               {m.contactSources.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
@@ -295,16 +316,15 @@ function MetadataForm({
         {/* Notes */}
         <div className="space-y-1.5">
           <Label className="text-xs font-medium">Notes <span className="text-muted-foreground font-normal">(optional)</span></Label>
-          <Textarea value={value.notes ?? ""} onChange={e => onChange({ ...value, notes: e.target.value })} placeholder="Add any notes about this contact…" rows={2} className="resize-none text-sm" />
+          <Textarea
+            value={value.notes ?? ""}
+            onChange={e => onChange({ ...value, notes: e.target.value })}
+            placeholder="Add any notes about this contact…"
+            rows={2}
+            className="resize-none text-sm"
+          />
         </div>
       </div>
-
-      {/* Create Dialogs */}
-      <CreateEntityDialog open={createDialog === "vendor"} onClose={() => setCreateDialog(null)} title="New Vendor" onCreated={(id, name) => onChange({ ...value, vendorId: id })} />
-      <CreateEntityDialog open={createDialog === "vendor_sub"} onClose={() => setCreateDialog(null)} title="New Vendor Sub-Category" isSubcategory parentLabel="Vendor" parentOptions={m.vendors} onCreated={(id, name, parentId) => onChange({ ...value, vendorSubcategoryId: id })} />
-      <CreateEntityDialog open={createDialog === "client"} onClose={() => setCreateDialog(null)} title="New Client" onCreated={(id, name) => onChange({ ...value, clientId: id })} />
-      <CreateEntityDialog open={createDialog === "client_sub"} onClose={() => setCreateDialog(null)} title="New Client Sub-Category" isSubcategory parentLabel="Client" parentOptions={m.clients} onCreated={(id, name, parentId) => onChange({ ...value, clientSubcategoryId: id })} />
-      <CreateEntityDialog open={createDialog === "consultant"} onClose={() => setCreateDialog(null)} title="New Consultant" onCreated={(id, name) => onChange({ ...value, consultantId: id })} />
     </div>
   );
 }
@@ -474,11 +494,9 @@ export default function AddContacts() {
                   Contact {metaIdx + 1} of {selectedContacts.length}
                 </CardDescription>
               </div>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => setStep("browse")} className="gap-1">
-                  <ChevronLeft className="w-3.5 h-3.5" /> Back
-                </Button>
-              </div>
+              <Button variant="outline" size="sm" onClick={() => setStep("browse")} className="gap-1">
+                <ChevronLeft className="w-3.5 h-3.5" /> Back
+              </Button>
             </div>
             {/* Progress dots */}
             <div className="flex gap-1.5 mt-2">
@@ -530,11 +548,12 @@ export default function AddContacts() {
             <ScrollArea className="h-[300px] pr-2">
               <div className="space-y-2">
                 {selectedContacts.map(c => {
-                  const m = metadataMap[c.id] ?? {};
-                  const region = metadata.regions.find(r => r.id === m.regionId);
-                  const vendor = metadata.vendors.find(v => v.id === m.vendorId);
-                  const client = metadata.clients.find(cl => cl.id === m.clientId);
-                  const source = metadata.contactSources.find(s => s.id === m.contactSourceId);
+                  const meta = metadataMap[c.id] ?? {};
+                  const region = metadata.regions.find(r => r.id === meta.regionId);
+                  const vendorSub = metadata.vendorSubcategories.find(s => s.id === meta.vendorSubcategoryId);
+                  const clientSub = metadata.clientSubcategories.find(s => s.id === meta.clientSubcategoryId);
+                  const consultantSub = metadata.consultantSubcategories.find(s => s.id === meta.consultantSubcategoryId);
+                  const source = metadata.contactSources.find(s => s.id === meta.contactSourceId);
                   return (
                     <div key={c.id} className="flex items-start gap-3 p-3 rounded-lg border bg-card">
                       <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-primary font-semibold text-xs">
@@ -544,10 +563,11 @@ export default function AddContacts() {
                         <p className="font-medium text-sm">{c.displayName}</p>
                         <div className="flex flex-wrap gap-1 mt-1.5">
                           {region && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{region.name}</Badge>}
-                          {vendor && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{vendor.name}</Badge>}
-                          {client && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{client.name}</Badge>}
+                          {vendorSub && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-blue-500/10 text-blue-700 dark:text-blue-300">Vendor: {vendorSub.name}</Badge>}
+                          {clientSub && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">Client: {clientSub.name}</Badge>}
+                          {consultantSub && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-violet-500/10 text-violet-700 dark:text-violet-300">Consultant: {consultantSub.name}</Badge>}
                           {source && <Badge variant="outline" className="text-[10px] px-1.5 py-0">{source.name}</Badge>}
-                          {!region && !vendor && !client && !source && (
+                          {!region && !vendorSub && !clientSub && !consultantSub && !source && (
                             <span className="text-[10px] text-muted-foreground">No metadata added</span>
                           )}
                         </div>

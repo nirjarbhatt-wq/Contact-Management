@@ -15,6 +15,13 @@
       "when": 1780122804007,
       "tag": "0001_tearful_storm",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1780124124513,
+      "tag": "0002_redesign_categories",
+      "breakpoints": true
     }
   ]
 }
