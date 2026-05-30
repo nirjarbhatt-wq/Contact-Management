@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { useMetadata } from "@/hooks/useMetadata";
@@ -40,8 +40,51 @@ type ContactMetadata = {
   notes?: string;
 };
 
-// ─── Simulated device contacts (Capacitor bridge for web preview) ─────────────
-const SAMPLE_CONTACTS: DeviceContact[] = [
+// ─── Capacitor Contacts loader ────────────────────────────────────────────────
+// On a real iOS/Android device this calls the native Contacts plugin.
+// In a browser (web preview / Manus) it falls back to a small sample list so
+// the UI remains fully testable without a native bridge.
+async function loadDeviceContacts(): Promise<DeviceContact[]> {
+  try {
+    // Dynamically import so the web bundle doesn't fail if the native bridge
+    // is absent (tree-shaking keeps this out of the critical path).
+    const { Contacts } = await import("@capacitor-community/contacts");
+
+    // Request permission first
+    const perm = await Contacts.requestPermissions();
+    if (perm.contacts !== "granted") {
+      throw new Error("permission_denied");
+    }
+
+    const result = await Contacts.getContacts({
+      projection: {
+        name: true,
+        phones: true,
+        emails: true,
+      },
+    });
+
+    return result.contacts
+      .filter(c => c.name?.display || c.phones?.length)
+      .map((c, i) => ({
+        id: c.contactId ?? String(i),
+        displayName: c.name?.display ?? c.name?.given ?? "Unknown",
+        firstName: c.name?.given ?? undefined,
+        lastName: c.name?.family ?? undefined,
+        phoneNumbers: (c.phones ?? []).map(p => p.number ?? "").filter(Boolean),
+        emails: (c.emails ?? []).map(e => e.address ?? "").filter(Boolean),
+      }))
+      .sort((a, b) => a.displayName.localeCompare(b.displayName));
+  } catch (err: any) {
+    // Native bridge not available (web browser) or permission denied
+    if (err?.message === "permission_denied") throw err;
+    // Fall back to sample data in browser/web preview
+    return WEB_FALLBACK_CONTACTS;
+  }
+}
+
+// Web-only fallback — shown in browser when native bridge is unavailable
+const WEB_FALLBACK_CONTACTS: DeviceContact[] = [
   { id: "1", displayName: "Arjun Sharma", firstName: "Arjun", lastName: "Sharma", phoneNumbers: ["+91 98765 43210"], emails: ["arjun.sharma@example.com"] },
   { id: "2", displayName: "Priya Patel", firstName: "Priya", lastName: "Patel", phoneNumbers: ["+91 87654 32109"], emails: ["priya.patel@techcorp.in"] },
   { id: "3", displayName: "Rahul Verma", firstName: "Rahul", lastName: "Verma", phoneNumbers: ["+91 76543 21098", "+91 99887 76655"], emails: [] },
@@ -346,18 +389,38 @@ export default function AddContacts() {
   const [showDupDialog, setShowDupDialog] = useState(false);
   const [pendingPayload, setPendingPayload] = useState<any[] | null>(null);
 
+  // Device contacts state
+  const [deviceContacts, setDeviceContacts] = useState<DeviceContact[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(true);
+  const [contactsError, setContactsError] = useState<"permission_denied" | "error" | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setContactsLoading(true);
+    setContactsError(null);
+    loadDeviceContacts()
+      .then(contacts => { if (!cancelled) { setDeviceContacts(contacts); setContactsLoading(false); } })
+      .catch(err => {
+        if (!cancelled) {
+          setContactsError(err?.message === "permission_denied" ? "permission_denied" : "error");
+          setContactsLoading(false);
+        }
+      });
+    return () => { cancelled = true; };
+  }, []);
+
   const uploadMutation = trpc.contacts.upload.useMutation();
   const utils = trpc.useUtils();
 
   const filtered = useMemo(() =>
-    SAMPLE_CONTACTS.filter(c =>
+    deviceContacts.filter(c =>
       c.displayName.toLowerCase().includes(search.toLowerCase()) ||
       c.phoneNumbers.some(p => p.includes(search)) ||
       c.emails.some(e => e.toLowerCase().includes(search.toLowerCase()))
-    ), [search]);
+    ), [search, deviceContacts]);
 
   const selectedContacts = useMemo(() =>
-    SAMPLE_CONTACTS.filter(c => selected.has(c.id)), [selected]);
+    deviceContacts.filter(c => selected.has(c.id)), [selected, deviceContacts]);
 
   const toggleSelect = (id: string) => {
     setSelected(prev => {
@@ -538,6 +601,42 @@ export default function AddContacts() {
             </div>
           </CardHeader>
           <CardContent className="p-0">
+            {/* Loading state */}
+            {contactsLoading && (
+              <div className="flex flex-col items-center justify-center h-40 gap-3 text-muted-foreground">
+                <div className="w-7 h-7 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                <p className="text-sm">Loading contacts…</p>
+              </div>
+            )}
+            {/* Permission denied */}
+            {!contactsLoading && contactsError === "permission_denied" && (
+              <div className="flex flex-col items-center justify-center h-40 gap-3 px-6 text-center">
+                <Smartphone className="w-8 h-8 text-amber-500" />
+                <p className="text-sm font-medium">Contacts permission denied</p>
+                <p className="text-xs text-muted-foreground">Please allow access to contacts in your device settings, then tap Retry.</p>
+                <Button size="sm" variant="outline" onClick={() => {
+                  setContactsLoading(true); setContactsError(null);
+                  loadDeviceContacts()
+                    .then(c => { setDeviceContacts(c); setContactsLoading(false); })
+                    .catch(err => { setContactsError(err?.message === "permission_denied" ? "permission_denied" : "error"); setContactsLoading(false); });
+                }}>Retry</Button>
+              </div>
+            )}
+            {/* Generic error */}
+            {!contactsLoading && contactsError === "error" && (
+              <div className="flex flex-col items-center justify-center h-40 gap-3 px-6 text-center">
+                <Users className="w-8 h-8 text-destructive opacity-60" />
+                <p className="text-sm font-medium">Could not load contacts</p>
+                <Button size="sm" variant="outline" onClick={() => {
+                  setContactsLoading(true); setContactsError(null);
+                  loadDeviceContacts()
+                    .then(c => { setDeviceContacts(c); setContactsLoading(false); })
+                    .catch(err => { setContactsError(err?.message === "permission_denied" ? "permission_denied" : "error"); setContactsLoading(false); });
+                }}>Retry</Button>
+              </div>
+            )}
+            {/* Contact list */}
+            {!contactsLoading && !contactsError && (
             <ScrollArea className="h-[420px]">
               {filtered.map((c, i) => {
                 const isSelected = selected.has(c.id);
@@ -578,6 +677,7 @@ export default function AddContacts() {
                 </div>
               )}
             </ScrollArea>
+            )}
           </CardContent>
         </Card>
       )}

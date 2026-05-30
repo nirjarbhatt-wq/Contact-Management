@@ -106,3 +106,19 @@
 ### Owner Notifications
 - [ ] Wire notifyOwner() into contacts upload procedure
 - [ ] Notify owner when team member uploads or imports contacts
+
+## Phase 5 - Capacitor Native App (iOS & Android)
+
+### Capacitor Setup
+- [x] Install @capacitor/core, @capacitor/cli, @capacitor/ios, @capacitor/android, @capacitor-community/contacts
+- [x] Create capacitor.config.ts with appId com.reciclartpl.contactcollection, webDir dist/public
+- [x] Build scripts added: cap:build, cap:ios, cap:android, cap:sync
+
+### Native Contacts Integration
+- [x] Replace SAMPLE_CONTACTS mock in AddContacts.tsx with real Capacitor Contacts.getContacts() call
+- [x] Add permission request flow (requestPermissions before getContacts)
+- [x] Add web/browser fallback (WEB_FALLBACK_CONTACTS) when native bridge is unavailable
+- [x] Handle contact permission denied state with retry button
+
+### Build Guide
+- [x] CAPACITOR_BUILD_GUIDE.md produced with step-by-step iOS and Android local build instructions
