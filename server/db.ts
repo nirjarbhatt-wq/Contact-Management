@@ -81,7 +81,7 @@ export async function getUserByOpenId(openId: string) {
 export async function getAllUsers() {
   const db = await getDb();
   if (!db) return [];
-  return db.select({ id: users.id, name: users.name, email: users.email, role: users.role }).from(users).orderBy(users.name);
+  return db.select({ id: users.id, name: users.name, email: users.email, role: users.role, isActive: users.isActive, createdAt: users.createdAt, lastSignedIn: users.lastSignedIn }).from(users).orderBy(users.name);
 }
 
 // ─── Regions ──────────────────────────────────────────────────────────────────
@@ -629,4 +629,48 @@ export async function getDrilldownContacts(
     .where(eq(col, filterId))
     .orderBy(contacts.displayName)
     .limit(200);
+}
+
+// ─── Custom Auth Helpers ──────────────────────────────────────────────────────
+
+export async function getUserByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  return result[0] ?? null;
+}
+
+export async function createUser(data: { openId: string; name: string; email: string; passwordHash: string; role?: 'user' | 'admin'; isActive?: number }) {
+  const db = await getDb();
+  if (!db) throw new Error('DB unavailable');
+  await db.insert(users).values({
+    openId: data.openId,
+    name: data.name,
+    email: data.email,
+    passwordHash: data.passwordHash,
+    loginMethod: 'password',
+    role: data.role ?? 'user',
+    isActive: data.isActive ?? 0,
+    lastSignedIn: new Date(),
+  });
+  const result = await db.select().from(users).where(eq(users.email, data.email)).limit(1);
+  return result[0];
+}
+
+export async function setUserActive(userId: number, isActive: number) {
+  const db = await getDb();
+  if (!db) throw new Error('DB unavailable');
+  await db.update(users).set({ isActive, updatedAt: new Date() }).where(eq(users.id, userId));
+}
+
+export async function setUserRole(userId: number, role: 'user' | 'admin') {
+  const db = await getDb();
+  if (!db) throw new Error('DB unavailable');
+  await db.update(users).set({ role, updatedAt: new Date() }).where(eq(users.id, userId));
+}
+
+export async function updateUserPassword(userId: number, passwordHash: string) {
+  const db = await getDb();
+  if (!db) throw new Error('DB unavailable');
+  await db.update(users).set({ passwordHash, updatedAt: new Date() }).where(eq(users.id, userId));
 }

@@ -122,3 +122,24 @@
 
 ### Build Guide
 - [x] CAPACITOR_BUILD_GUIDE.md produced with step-by-step iOS and Android local build instructions
+
+## Phase 6 - Multi-User Google OAuth Login (replaced by custom auth)
+
+- [x] Replaced with custom email/password auth (see Phase 6 below)
+
+## Phase 6 - Custom Email/Password Authentication
+
+- [x] Add passwordHash and isActive fields to users table in schema.ts
+- [x] Generate and apply DB migration (0004_old_amphibian.sql)
+- [x] Seed admin user: admin@reciclartpl.com / Rtpl@1234 (bcrypt hashed, isActive=1, role=admin)
+- [x] Install bcryptjs for password hashing
+- [x] Add auth.register and auth.login tRPC procedures (publicProcedure, bcrypt + JWT cookie)
+- [x] Reuse existing JWT/cookie infrastructure from sdk.createSessionToken
+- [x] Build Login page (email + password form, dark themed)
+- [x] Build Register page (name + email + password + confirm, pending approval flow)
+- [x] New users start with isActive=0 — pending admin approval
+- [x] Build UserManagement page: list all users, approve/deactivate, change role (admin only)
+- [x] Add User Management to admin sidebar nav items
+- [x] App.tsx: add /login and /register as public routes, AuthGate redirects to /login
+- [x] DashboardLayout unauthenticated panel redirects to /login
+- [x] 14/14 tests passing, 0 TypeScript errors

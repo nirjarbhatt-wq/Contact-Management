@@ -57,6 +57,7 @@ const mainNavItems = [
 const adminNavItems = [
   { icon: Settings2, label: "Master Data", path: "/admin" },
   { icon: ClipboardList, label: "Audit Log", path: "/audit-log" },
+  { icon: Shield, label: "User Management", path: "/users" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -92,7 +93,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               Internal contact management platform. Sign in with your Manus account to continue.
             </p>
           </div>
-          <Button onClick={() => { window.location.href = getLoginUrl(); }} size="lg" className="w-full shadow-sm">
+          <Button onClick={() => { window.location.href = "/login"; }} size="lg" className="w-full shadow-sm">
             Sign in to continue
           </Button>
         </div>
