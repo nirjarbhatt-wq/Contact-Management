@@ -2,7 +2,6 @@ import { trpc } from "@/lib/trpc";
 import { UNAUTHED_ERR_MSG } from '@shared/const';
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink, TRPCClientError } from "@trpc/client";
-import { Capacitor } from "@capacitor/core";
 import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
@@ -40,8 +39,24 @@ queryClient.getMutationCache().subscribe(event => {
 
 // When running as a native Capacitor app (Android/iOS), the WebView serves
 // files from capacitor://localhost or https://localhost, so relative URLs
-// resolve to localhost instead of the real server. Use the absolute URL instead.
-const API_BASE_URL = Capacitor.isNativePlatform()
+// would resolve to localhost instead of the real server.
+// Detect native context by checking if the origin is localhost (Capacitor WebView)
+// or if window.androidBridge / window.webkit.messageHandlers.bridge is present.
+const isNativeApp = (): boolean => {
+  const origin = window.location.origin;
+  // Capacitor Android uses https://localhost, Capacitor iOS uses capacitor://localhost
+  if (origin === 'https://localhost' || origin === 'capacitor://localhost' || origin === 'http://localhost') {
+    return true;
+  }
+  // Also check for the native bridge objects as a fallback
+  const win = window as unknown as Record<string, unknown>;
+  if (win.androidBridge) return true;
+  const webkit = win.webkit as { messageHandlers?: { bridge?: unknown } } | undefined;
+  if (webkit?.messageHandlers?.bridge) return true;
+  return false;
+};
+
+const API_BASE_URL = isNativeApp()
   ? "https://contactapp-2llv2cmp.manus.space/api/trpc"
   : "/api/trpc";
 
