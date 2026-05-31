@@ -1,8 +1,10 @@
 {
-  "packageManager": "pnpm",
-  "webBuildConfig": {
-    "buildCommand": "pnpm build",
-    "distDir": "dist/public",
-    "nodeVersion": "20"
-  }
+  "apps": [
+    {
+      "appId": "ad28300a",
+      "dependencyInstallCommand": "npm install -g pnpm && pnpm install",
+      "webBuildCommand": "pnpm build",
+      "androidPath": "android"
+    }
+  ]
 }
