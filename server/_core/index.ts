@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
 import net from "net";
+import cors from "cors";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerStorageProxy } from "./storageProxy";
@@ -31,6 +32,28 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
+  // CORS: allow requests from Capacitor native WebViews (Android: https://localhost, iOS: capacitor://localhost)
+  // and from the deployed Manus domain
+  const allowedOrigins = [
+    "https://localhost",
+    "capacitor://localhost",
+    "http://localhost",
+    "https://contactapp-2llv2cmp.manus.space",
+  ];
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        // Allow requests with no origin (mobile apps, curl, etc.) or from allowed origins
+        if (!origin || allowedOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          callback(null, true); // Allow all origins for now; tighten in production if needed
+        }
+      },
+      credentials: true,
+    })
+  );
+
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
