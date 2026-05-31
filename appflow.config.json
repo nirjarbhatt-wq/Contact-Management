@@ -2,7 +2,7 @@
   "apps": [
     {
       "appId": "ad28300a",
-      "dependencyInstallCommand": "npm install -g pnpm && pnpm install",
+      "dependencyInstallCommand": "npm install -g pnpm --force && pnpm install",
       "webBuildCommand": "pnpm build",
       "androidPath": "android"
     }
