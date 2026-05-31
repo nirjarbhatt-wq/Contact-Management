@@ -2,6 +2,7 @@ import { trpc } from "@/lib/trpc";
 import { UNAUTHED_ERR_MSG } from '@shared/const';
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink, TRPCClientError } from "@trpc/client";
+import { Capacitor } from "@capacitor/core";
 import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
@@ -37,10 +38,17 @@ queryClient.getMutationCache().subscribe(event => {
   }
 });
 
+// When running as a native Capacitor app (Android/iOS), the WebView serves
+// files from capacitor://localhost or https://localhost, so relative URLs
+// resolve to localhost instead of the real server. Use the absolute URL instead.
+const API_BASE_URL = Capacitor.isNativePlatform()
+  ? "https://contactapp-2llv2cmp.manus.space/api/trpc"
+  : "/api/trpc";
+
 const trpcClient = trpc.createClient({
   links: [
     httpBatchLink({
-      url: "/api/trpc",
+      url: API_BASE_URL,
       transformer: superjson,
       fetch(input, init) {
         return globalThis.fetch(input, {
