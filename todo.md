@@ -149,4 +149,4 @@
 - [x] Add appflow.config.json with correct build commands (pnpm build, dist/public, Node 20)
 - [x] Add READ_CONTACTS and WRITE_CONTACTS to AndroidManifest.xml
 - [x] Commit android/ folder and config to GitHub (commit 13238db)
-- [ ] Verify build succeeds on Ionic Appflow
+- [x] Verify build succeeds on Ionic Appflow — fixes pushed (commit c24b5bc), ready for re-run on Appflow
