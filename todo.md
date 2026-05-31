@@ -143,9 +143,10 @@
 
 ## Phase 7 - Ionic Appflow Android Build Fix
 
-- [ ] Run pnpm build to generate dist/public
-- [ ] Run npx cap add android to generate android/ native folder
-- [ ] Run npx cap sync android to sync web assets
-- [ ] Add appflow.config.json with correct build commands
-- [ ] Commit android/ folder and config to GitHub
+- [x] Run pnpm build to generate dist/public
+- [x] Run npx cap add android to generate android/ native folder (55 files created)
+- [x] Run npx cap sync android to sync web assets
+- [x] Add appflow.config.json with correct build commands (pnpm build, dist/public, Node 20)
+- [x] Add READ_CONTACTS and WRITE_CONTACTS to AndroidManifest.xml
+- [x] Commit android/ folder and config to GitHub (commit 13238db)
 - [ ] Verify build succeeds on Ionic Appflow
