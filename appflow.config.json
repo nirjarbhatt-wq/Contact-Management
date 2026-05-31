@@ -1,0 +1,8 @@
+{
+  "packageManager": "pnpm",
+  "webBuildConfig": {
+    "buildCommand": "pnpm build",
+    "distDir": "dist/public",
+    "nodeVersion": "20"
+  }
+}

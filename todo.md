@@ -140,3 +140,12 @@
 - [x] App.tsx: add /login and /register as public routes, AuthGate redirects to /login
 - [x] DashboardLayout unauthenticated panel redirects to /login
 - [x] 14/14 tests passing, 0 TypeScript errors
+
+## Phase 7 - Ionic Appflow Android Build Fix
+
+- [ ] Run pnpm build to generate dist/public
+- [ ] Run npx cap add android to generate android/ native folder
+- [ ] Run npx cap sync android to sync web assets
+- [ ] Add appflow.config.json with correct build commands
+- [ ] Commit android/ folder and config to GitHub
+- [ ] Verify build succeeds on Ionic Appflow
