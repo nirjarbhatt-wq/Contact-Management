@@ -119,16 +119,24 @@ const contactsRouter = router({
     pageSize: z.number().int().positive().max(100).default(20),
     phoneticSearch: z.boolean().optional(),
   })).query(async ({ ctx, input }) => {
+    const isAdmin = ctx.user.role === "admin";
     const filters = {
       ...input,
       uploadedByUserId: input.myUploadsOnly ? ctx.user.id : undefined,
+      // Non-admins only see contacts from their own department
+      department: (!isAdmin && !input.myUploadsOnly) ? (ctx.user.department ?? null) : undefined,
     };
     return getContacts(filters);
   }),
 
   // Export all contacts without pagination — for CSV download
-  exportAll: protectedProcedure.query(async () => {
-    const result = await getContacts({ page: 1, pageSize: 5000 });
+  exportAll: protectedProcedure.query(async ({ ctx }) => {
+    const isAdmin = ctx.user.role === "admin";
+    const result = await getContacts({
+      page: 1,
+      pageSize: 5000,
+      department: isAdmin ? undefined : (ctx.user.department ?? null),
+    });
     return result.contacts;
   }),
 
@@ -314,18 +322,45 @@ const contactsRouter = router({
 
 // ─── Reports Router ───────────────────────────────────────────────────────────
 const reportsRouter = router({
-  overview: protectedProcedure.query(() => getOverviewStats()),
-  byRegion: protectedProcedure.query(() => getReportByRegion()),
-  byVendorSubcategory: protectedProcedure.query(() => getReportByVendorSubcategory()),
-  byClientSubcategory: protectedProcedure.query(() => getReportByClientSubcategory()),
-  byConsultantSubcategory: protectedProcedure.query(() => getReportByConsultantSubcategory()),
-  bySource: protectedProcedure.query(() => getReportBySource()),
-  uploadActivity: protectedProcedure.query(() => getReportUploadActivity()),
+  overview: protectedProcedure.query(({ ctx }) => {
+    const dept = ctx.user.role === "admin" ? undefined : (ctx.user.department ?? null);
+    return getOverviewStats(dept);
+  }),
+  byRegion: protectedProcedure.query(({ ctx }) => {
+    const dept = ctx.user.role === "admin" ? undefined : (ctx.user.department ?? null);
+    return getReportByRegion(dept);
+  }),
+  byVendorSubcategory: protectedProcedure.query(({ ctx }) => {
+    const dept = ctx.user.role === "admin" ? undefined : (ctx.user.department ?? null);
+    return getReportByVendorSubcategory(dept);
+  }),
+  byClientSubcategory: protectedProcedure.query(({ ctx }) => {
+    const dept = ctx.user.role === "admin" ? undefined : (ctx.user.department ?? null);
+    return getReportByClientSubcategory(dept);
+  }),
+  byConsultantSubcategory: protectedProcedure.query(({ ctx }) => {
+    const dept = ctx.user.role === "admin" ? undefined : (ctx.user.department ?? null);
+    return getReportByConsultantSubcategory(dept);
+  }),
+  bySource: protectedProcedure.query(({ ctx }) => {
+    const dept = ctx.user.role === "admin" ? undefined : (ctx.user.department ?? null);
+    return getReportBySource(dept);
+  }),
+  uploadActivity: protectedProcedure.query(({ ctx }) => {
+    const dept = ctx.user.role === "admin" ? undefined : (ctx.user.department ?? null);
+    return getReportUploadActivity(dept);
+  }),
   drilldown: protectedProcedure.input(z.object({
     filterType: z.enum(["region", "vendorSubcategory", "clientSubcategory", "consultantSubcategory", "source"]),
     filterId: z.number().int(),
-  })).query(({ input }) => getDrilldownContacts(input.filterType, input.filterId)),
-  dashboard: protectedProcedure.query(() => getDashboardStats()),
+  })).query(({ ctx, input }) => {
+    const dept = ctx.user.role === "admin" ? undefined : (ctx.user.department ?? null);
+    return getDrilldownContacts(input.filterType, input.filterId, dept);
+  }),
+  dashboard: protectedProcedure.query(({ ctx }) => {
+    const dept = ctx.user.role === "admin" ? undefined : (ctx.user.department ?? null);
+    return getDashboardStats(dept);
+  }),
 });
 
 // ─── Audit Router ─────────────────────────────────────────────────────────────
@@ -385,6 +420,7 @@ export const appRouter = router({
         name: z.string().min(2).max(128),
         email: z.string().email(),
         password: z.string().min(6).max(128),
+        department: z.string().min(1).max(128),
       }))
       .mutation(async ({ input }) => {
         const existing = await getUserByEmail(input.email.toLowerCase());
@@ -398,6 +434,7 @@ export const appRouter = router({
           passwordHash,
           role: "user",
           isActive: 0,
+          department: input.department,
         });
         return { success: true, message: "Account created. Please wait for admin approval before logging in." };
       }),

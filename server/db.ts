@@ -81,7 +81,7 @@ export async function getUserByOpenId(openId: string) {
 export async function getAllUsers() {
   const db = await getDb();
   if (!db) return [];
-  return db.select({ id: users.id, name: users.name, email: users.email, role: users.role, isActive: users.isActive, createdAt: users.createdAt, lastSignedIn: users.lastSignedIn }).from(users).orderBy(users.name);
+  return db.select({ id: users.id, name: users.name, email: users.email, role: users.role, isActive: users.isActive, department: users.department, createdAt: users.createdAt, lastSignedIn: users.lastSignedIn }).from(users).orderBy(users.name);
 }
 
 // ─── Regions ──────────────────────────────────────────────────────────────────
@@ -150,6 +150,8 @@ export type ContactFilters = {
   consultantSubcategoryId?: number;
   contactSourceId?: number;
   uploadedByUserId?: number;
+  // Department-based access: if set, only return contacts uploaded by users in this department
+  department?: string | null;
   page?: number;
   pageSize?: number;
   phoneticSearch?: boolean;
@@ -165,6 +167,9 @@ export async function getContacts(filters: ContactFilters = {}) {
   } = filters;
 
   const conditions = [];
+
+  // Department scope: join users table and filter by department when set
+  const hasDeptFilter = filters.department != null;
 
   if (search) {
     if (phoneticSearch) {
@@ -186,6 +191,12 @@ export async function getContacts(filters: ContactFilters = {}) {
   if (consultantSubcategoryId) conditions.push(eq(contacts.consultantSubcategoryId, consultantSubcategoryId));
   if (contactSourceId) conditions.push(eq(contacts.contactSourceId, contactSourceId));
   if (uploadedByUserId) conditions.push(eq(contacts.uploadedByUserId, uploadedByUserId));
+  if (hasDeptFilter) {
+    // Filter contacts to those uploaded by users in the same department
+    conditions.push(
+      sql`${contacts.uploadedByUserId} IN (SELECT id FROM users WHERE department = ${filters.department})`
+    );
+  }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
   const offset = (page - 1) * pageSize;
@@ -406,7 +417,7 @@ export async function importContactsFromCSV(
 
 // ─── Dashboard Stats ──────────────────────────────────────────────────────────
 
-export async function getDashboardStats() {
+export async function getDashboardStats(department?: string | null) {
   const db = await getDb();
   if (!db) return {
     totalContacts: 0, contactsThisWeek: 0, contactsThisMonth: 0,
@@ -416,6 +427,17 @@ export async function getDashboardStats() {
   const now = new Date();
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+  // Build department subquery clause for raw SQL
+  const deptClause = department != null
+    ? sql`AND c.uploadedByUserId IN (SELECT id FROM users WHERE department = ${department})`
+    : sql``;
+  const deptClauseNoAlias = department != null
+    ? sql`AND uploadedByUserId IN (SELECT id FROM users WHERE department = ${department})`
+    : sql``;
+  const deptWhere = department != null
+    ? sql`WHERE uploadedByUserId IN (SELECT id FROM users WHERE department = ${department})`
+    : sql``;
 
   const [
     totalResult,
@@ -427,40 +449,42 @@ export async function getDashboardStats() {
     uploadsByUserResult,
     activityResult,
   ] = await Promise.all([
-    db.select({ count: sql<number>`count(*)` }).from(contacts),
-    db.select({ count: sql<number>`count(*)` }).from(contacts).where(sql`${contacts.createdAt} >= ${weekAgo}`),
-    db.select({ count: sql<number>`count(*)` }).from(contacts).where(sql`${contacts.createdAt} >= ${monthAgo}`),
-    db.select({ count: sql<number>`count(distinct ${contacts.uploadedByUserId})` }).from(contacts).where(sql`${contacts.createdAt} >= ${monthAgo}`),
+    db.execute(sql`SELECT COUNT(*) AS count FROM contacts c WHERE 1=1 ${deptClause}`),
+    db.execute(sql`SELECT COUNT(*) AS count FROM contacts c WHERE ${contacts.createdAt} >= ${weekAgo} ${deptClause}`),
+    db.execute(sql`SELECT COUNT(*) AS count FROM contacts c WHERE ${contacts.createdAt} >= ${monthAgo} ${deptClause}`),
+    db.execute(sql`SELECT COUNT(DISTINCT c.uploadedByUserId) AS count FROM contacts c WHERE ${contacts.createdAt} >= ${monthAgo} ${deptClause}`),
     db.execute(sql`
       SELECT r.name AS regionName, COUNT(*) AS count
       FROM contacts c LEFT JOIN regions r ON c.regionId = r.id
-      WHERE c.regionId IS NOT NULL
+      WHERE c.regionId IS NOT NULL ${deptClause}
       GROUP BY r.name ORDER BY count DESC LIMIT 5
     `),
     db.execute(sql`
       SELECT c.id, c.displayName, c.phoneNumbers, c.createdAt, u.name AS uploaderName
       FROM contacts c LEFT JOIN users u ON c.uploadedByUserId = u.id
+      WHERE 1=1 ${deptClause}
       ORDER BY c.createdAt DESC LIMIT 10
     `),
     db.execute(sql`
       SELECT u.name AS userName, COUNT(*) AS count
       FROM contacts c LEFT JOIN users u ON c.uploadedByUserId = u.id
+      WHERE 1=1 ${deptClause}
       GROUP BY u.id, u.name ORDER BY count DESC LIMIT 10
     `),
     db.execute(sql`
       SELECT DATE(createdAt) AS date, COUNT(*) AS count
       FROM contacts
-      WHERE createdAt >= ${monthAgo}
+      ${deptWhere} ${department != null ? sql`AND createdAt >= ${monthAgo}` : sql`WHERE createdAt >= ${monthAgo}`}
       GROUP BY DATE(createdAt)
       ORDER BY date ASC
     `),
   ]);
 
   return {
-    totalContacts: Number(totalResult[0]?.count ?? 0),
-    contactsThisWeek: Number(weekResult[0]?.count ?? 0),
-    contactsThisMonth: Number(monthResult[0]?.count ?? 0),
-    activeUsers: Number(activeUsersResult[0]?.count ?? 0),
+    totalContacts: Number(((totalResult as any[])[0] as any[])[0]?.count ?? 0),
+    contactsThisWeek: Number(((weekResult as any[])[0] as any[])[0]?.count ?? 0),
+    contactsThisMonth: Number(((monthResult as any[])[0] as any[])[0]?.count ?? 0),
+    activeUsers: Number(((activeUsersResult as any[])[0] as any[])[0]?.count ?? 0),
     topRegions: ((topRegionsResult as any[])[0] as any[]).map((r: any) => ({ name: r.regionName ?? "Unknown", count: Number(r.count) })),
     recentContacts: ((recentResult as any[])[0] as any[]),
     uploadsByUser: ((uploadsByUserResult as any[])[0] as any[]).map((r: any) => ({ name: r.userName ?? "Unknown", count: Number(r.count) })),
@@ -510,92 +534,110 @@ export async function getAuditLogs(page = 1, pageSize = 50) {
 
 // ─── Reports ──────────────────────────────────────────────────────────────────
 
-export async function getReportByRegion() {
+export async function getReportByRegion(department?: string | null) {
   const db = await getDb();
   if (!db) return [];
-  return db.select({
-    regionId: contacts.regionId,
-    regionName: regions.name,
-    count: sql<number>`count(*)`,
-  })
-    .from(contacts)
-    .leftJoin(regions, eq(contacts.regionId, regions.id))
-    .groupBy(contacts.regionId, regions.name)
-    .orderBy(desc(sql`count(*)`));
+  const deptClause = department != null
+    ? sql`AND c.uploadedByUserId IN (SELECT id FROM users WHERE department = ${department})`
+    : sql``;
+  const rows = await db.execute(sql`
+    SELECT r.id AS regionId, r.name AS regionName, COUNT(*) AS count
+    FROM contacts c LEFT JOIN regions r ON c.regionId = r.id
+    WHERE c.regionId IS NOT NULL ${deptClause}
+    GROUP BY r.id, r.name ORDER BY count DESC
+  `);
+  return (rows as any[])[0] as { regionId: number; regionName: string; count: number }[];
 }
 
-export async function getReportByVendorSubcategory() {
+export async function getReportByVendorSubcategory(department?: string | null) {
   const db = await getDb();
   if (!db) return [];
+  const deptClause = department != null
+    ? sql`AND c.uploadedByUserId IN (SELECT id FROM users WHERE department = ${department})`
+    : sql``;
   const rows = await db.execute(sql`
     SELECT s.id AS subcategoryId, s.name AS subcategoryName, COUNT(*) AS count
     FROM contacts c LEFT JOIN subcategories s ON c.vendorSubcategoryId = s.id
-    WHERE c.vendorSubcategoryId IS NOT NULL
+    WHERE c.vendorSubcategoryId IS NOT NULL ${deptClause}
     GROUP BY s.id, s.name ORDER BY count DESC
   `);
   return (rows as any[])[0] as { subcategoryId: number; subcategoryName: string; count: number }[];
 }
 
-export async function getReportByClientSubcategory() {
+export async function getReportByClientSubcategory(department?: string | null) {
   const db = await getDb();
   if (!db) return [];
+  const deptClause = department != null
+    ? sql`AND c.uploadedByUserId IN (SELECT id FROM users WHERE department = ${department})`
+    : sql``;
   const rows = await db.execute(sql`
     SELECT s.id AS subcategoryId, s.name AS subcategoryName, COUNT(*) AS count
     FROM contacts c LEFT JOIN subcategories s ON c.clientSubcategoryId = s.id
-    WHERE c.clientSubcategoryId IS NOT NULL
+    WHERE c.clientSubcategoryId IS NOT NULL ${deptClause}
     GROUP BY s.id, s.name ORDER BY count DESC
   `);
   return (rows as any[])[0] as { subcategoryId: number; subcategoryName: string; count: number }[];
 }
 
-export async function getReportByConsultantSubcategory() {
+export async function getReportByConsultantSubcategory(department?: string | null) {
   const db = await getDb();
   if (!db) return [];
+  const deptClause = department != null
+    ? sql`AND c.uploadedByUserId IN (SELECT id FROM users WHERE department = ${department})`
+    : sql``;
   const rows = await db.execute(sql`
     SELECT s.id AS subcategoryId, s.name AS subcategoryName, COUNT(*) AS count
     FROM contacts c LEFT JOIN subcategories s ON c.consultantSubcategoryId = s.id
-    WHERE c.consultantSubcategoryId IS NOT NULL
+    WHERE c.consultantSubcategoryId IS NOT NULL ${deptClause}
     GROUP BY s.id, s.name ORDER BY count DESC
   `);
   return (rows as any[])[0] as { subcategoryId: number; subcategoryName: string; count: number }[];
 }
 
-export async function getReportBySource() {
+export async function getReportBySource(department?: string | null) {
   const db = await getDb();
   if (!db) return [];
-  return db.select({
-    contactSourceId: contacts.contactSourceId,
-    sourceName: contactSources.name,
-    count: sql<number>`count(*)`,
-  })
-    .from(contacts)
-    .leftJoin(contactSources, eq(contacts.contactSourceId, contactSources.id))
-    .groupBy(contacts.contactSourceId, contactSources.name)
-    .orderBy(desc(sql`count(*)`));
+  const deptClause = department != null
+    ? sql`AND c.uploadedByUserId IN (SELECT id FROM users WHERE department = ${department})`
+    : sql``;
+  const rows = await db.execute(sql`
+    SELECT src.id AS contactSourceId, src.name AS sourceName, COUNT(*) AS count
+    FROM contacts c LEFT JOIN contact_sources src ON c.contactSourceId = src.id
+    WHERE c.contactSourceId IS NOT NULL ${deptClause}
+    GROUP BY src.id, src.name ORDER BY count DESC
+  `);
+  return (rows as any[])[0] as { contactSourceId: number; sourceName: string; count: number }[];
 }
 
-export async function getReportUploadActivity() {
+export async function getReportUploadActivity(department?: string | null) {
   const db = await getDb();
   if (!db) return [];
-  return db.select({
-    date: sql<string>`DATE(${contacts.createdAt})`,
-    count: sql<number>`count(*)`,
-  })
-    .from(contacts)
-    .groupBy(sql`DATE(${contacts.createdAt})`)
-    .orderBy(sql`DATE(${contacts.createdAt})`);
+  const deptClause = department != null
+    ? sql`AND uploadedByUserId IN (SELECT id FROM users WHERE department = ${department})`
+    : sql``;
+  const rows = await db.execute(sql`
+    SELECT DATE(createdAt) AS date, COUNT(*) AS count
+    FROM contacts
+    WHERE 1=1 ${deptClause}
+    GROUP BY DATE(createdAt)
+    ORDER BY DATE(createdAt)
+  `);
+  return (rows as any[])[0] as { date: string; count: number }[];
 }
 
-export async function getOverviewStats() {
+export async function getOverviewStats(department?: string | null) {
   const db = await getDb();
   if (!db) return { totalContacts: 0, totalUsers: 0, totalSubcategories: 0 };
-  const [contactCount, userCount, subcategoryCount] = await Promise.all([
-    db.select({ count: sql<number>`count(*)` }).from(contacts),
+  const deptClause = department != null
+    ? sql`AND uploadedByUserId IN (SELECT id FROM users WHERE department = ${department})`
+    : sql``;
+  const [contactResult, userCount, subcategoryCount] = await Promise.all([
+    db.execute(sql`SELECT COUNT(*) AS count FROM contacts WHERE 1=1 ${deptClause}`),
     db.select({ count: sql<number>`count(*)` }).from(users),
     db.select({ count: sql<number>`count(*)` }).from(subcategories),
   ]);
   return {
-    totalContacts: Number(contactCount[0]?.count ?? 0),
+    totalContacts: Number(((contactResult as any[])[0] as any[])[0]?.count ?? 0),
     totalUsers: Number(userCount[0]?.count ?? 0),
     totalSubcategories: Number(subcategoryCount[0]?.count ?? 0),
   };
@@ -603,7 +645,8 @@ export async function getOverviewStats() {
 
 export async function getDrilldownContacts(
   filterType: "region" | "vendorSubcategory" | "clientSubcategory" | "consultantSubcategory" | "source",
-  filterId: number
+  filterId: number,
+  department?: string | null
 ) {
   const db = await getDb();
   if (!db) return [];
@@ -615,20 +658,17 @@ export async function getDrilldownContacts(
     source: contacts.contactSourceId,
   } as const;
   const col = colMap[filterType];
-  return db.select({
-    id: contacts.id,
-    displayName: contacts.displayName,
-    firstName: contacts.firstName,
-    lastName: contacts.lastName,
-    phoneNumbers: contacts.phoneNumbers,
-    emails: contacts.emails,
-    notes: contacts.notes,
-    createdAt: contacts.createdAt,
-  })
-    .from(contacts)
-    .where(eq(col, filterId))
-    .orderBy(contacts.displayName)
-    .limit(200);
+  const deptCondition = department != null
+    ? sql`AND ${contacts.uploadedByUserId} IN (SELECT id FROM users WHERE department = ${department})`
+    : sql``;
+  const rows = await db.execute(sql`
+    SELECT id, displayName, firstName, lastName, phoneNumbers, emails, notes, createdAt
+    FROM contacts
+    WHERE ${col} = ${filterId} ${deptCondition}
+    ORDER BY displayName
+    LIMIT 200
+  `);
+  return (rows as any[])[0] as any[];
 }
 
 // ─── Custom Auth Helpers ──────────────────────────────────────────────────────
@@ -640,7 +680,7 @@ export async function getUserByEmail(email: string) {
   return result[0] ?? null;
 }
 
-export async function createUser(data: { openId: string; name: string; email: string; passwordHash: string; role?: 'user' | 'admin'; isActive?: number }) {
+export async function createUser(data: { openId: string; name: string; email: string; passwordHash: string; role?: 'user' | 'admin'; isActive?: number; department?: string }) {
   const db = await getDb();
   if (!db) throw new Error('DB unavailable');
   await db.insert(users).values({
@@ -651,6 +691,7 @@ export async function createUser(data: { openId: string; name: string; email: st
     loginMethod: 'password',
     role: data.role ?? 'user',
     isActive: data.isActive ?? 0,
+    department: data.department,
     lastSignedIn: new Date(),
   });
   const result = await db.select().from(users).where(eq(users.email, data.email)).limit(1);

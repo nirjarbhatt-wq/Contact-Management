@@ -18,6 +18,7 @@ export const users = mysqlTable("users", {
   // Custom auth fields
   passwordHash: varchar("passwordHash", { length: 256 }),
   isActive: int("isActive").default(1).notNull(), // 1 = active, 0 = deactivated/pending
+  department: varchar("department", { length: 128 }), // Department selected at registration
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),

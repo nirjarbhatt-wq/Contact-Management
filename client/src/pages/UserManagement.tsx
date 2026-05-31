@@ -83,6 +83,7 @@ export default function UserManagement() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
+                  <TableHead>Department</TableHead>
                   <TableHead>Registered</TableHead>
                   <TableHead className="text-right">Action</TableHead>
                 </TableRow>
@@ -92,6 +93,11 @@ export default function UserManagement() {
                   <TableRow key={u.id}>
                     <TableCell className="font-medium">{u.name ?? "—"}</TableCell>
                     <TableCell className="text-muted-foreground">{u.email}</TableCell>
+                    <TableCell>
+                      {(u as any).department ? (
+                        <Badge variant="outline" className="text-xs border-blue-500/40 text-blue-400">{(u as any).department}</Badge>
+                      ) : <span className="text-muted-foreground text-sm">—</span>}
+                    </TableCell>
                     <TableCell className="text-muted-foreground text-sm">
                       {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—"}
                     </TableCell>
@@ -130,6 +136,7 @@ export default function UserManagement() {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Email</TableHead>
+                <TableHead>Department</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Last Sign In</TableHead>
                 <TableHead className="text-right">Status</TableHead>
@@ -149,6 +156,11 @@ export default function UserManagement() {
                       )}
                     </TableCell>
                     <TableCell className="text-muted-foreground">{u.email}</TableCell>
+                    <TableCell>
+                      {(u as any).department ? (
+                        <Badge variant="outline" className="text-xs border-slate-500/40 text-slate-300">{(u as any).department}</Badge>
+                      ) : <span className="text-muted-foreground text-sm">—</span>}
+                    </TableCell>
                     <TableCell>
                       <Select
                         value={u.role}

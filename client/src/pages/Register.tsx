@@ -6,7 +6,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, UserPlus, Users, CheckCircle2 } from "lucide-react";
+
+const DEPARTMENTS = [
+  "Sales",
+  "Marketing",
+  "Engineering",
+  "Operations",
+  "Finance",
+  "HR",
+  "Procurement",
+  "Business Development",
+  "Management",
+  "Other",
+];
 
 export default function Register() {
   const [, navigate] = useLocation();
@@ -14,6 +28,7 @@ export default function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [department, setDepartment] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
@@ -29,7 +44,7 @@ export default function Register() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    if (!name.trim() || !email || !password) {
+    if (!name.trim() || !email || !password || !department) {
       setError("All fields are required.");
       return;
     }
@@ -41,7 +56,7 @@ export default function Register() {
       setError("Passwords do not match.");
       return;
     }
-    registerMutation.mutate({ name: name.trim(), email, password });
+    registerMutation.mutate({ name: name.trim(), email, password, department });
   };
 
   if (success) {
@@ -123,6 +138,33 @@ export default function Register() {
                   className="bg-slate-700/60 border-slate-600 text-white placeholder:text-slate-500 focus:border-blue-500"
                   disabled={registerMutation.isPending}
                 />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="department" className="text-slate-300 text-sm">Department</Label>
+                <Select
+                  value={department}
+                  onValueChange={setDepartment}
+                  disabled={registerMutation.isPending}
+                >
+                  <SelectTrigger
+                    id="department"
+                    className="bg-slate-700/60 border-slate-600 text-white focus:border-blue-500 data-[placeholder]:text-slate-500"
+                  >
+                    <SelectValue placeholder="Select your department" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-800 border-slate-700">
+                    {DEPARTMENTS.map((dept) => (
+                      <SelectItem
+                        key={dept}
+                        value={dept}
+                        className="text-slate-200 focus:bg-slate-700 focus:text-white"
+                      >
+                        {dept}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-1.5">
