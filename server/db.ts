@@ -450,9 +450,9 @@ export async function getDashboardStats(department?: string | null) {
     activityResult,
   ] = await Promise.all([
     db.execute(sql`SELECT COUNT(*) AS count FROM contacts c WHERE 1=1 ${deptClause}`),
-    db.execute(sql`SELECT COUNT(*) AS count FROM contacts c WHERE ${contacts.createdAt} >= ${weekAgo} ${deptClause}`),
-    db.execute(sql`SELECT COUNT(*) AS count FROM contacts c WHERE ${contacts.createdAt} >= ${monthAgo} ${deptClause}`),
-    db.execute(sql`SELECT COUNT(DISTINCT c.uploadedByUserId) AS count FROM contacts c WHERE ${contacts.createdAt} >= ${monthAgo} ${deptClause}`),
+    db.execute(sql`SELECT COUNT(*) AS count FROM contacts c WHERE c.createdAt >= ${weekAgo} ${deptClause}`),
+    db.execute(sql`SELECT COUNT(*) AS count FROM contacts c WHERE c.createdAt >= ${monthAgo} ${deptClause}`),
+    db.execute(sql`SELECT COUNT(DISTINCT c.uploadedByUserId) AS count FROM contacts c WHERE c.createdAt >= ${monthAgo} ${deptClause}`),
     db.execute(sql`
       SELECT r.name AS regionName, COUNT(*) AS count
       FROM contacts c LEFT JOIN regions r ON c.regionId = r.id
