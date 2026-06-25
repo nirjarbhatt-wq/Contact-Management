@@ -710,6 +710,12 @@ export async function setUserRole(userId: number, role: 'user' | 'admin') {
   await db.update(users).set({ role, updatedAt: new Date() }).where(eq(users.id, userId));
 }
 
+export async function setUserDepartment(userId: number, department: string | null) {
+  const db = await getDb();
+  if (!db) throw new Error('DB unavailable');
+  await db.update(users).set({ department, updatedAt: new Date() }).where(eq(users.id, userId));
+}
+
 export async function updateUserPassword(userId: number, passwordHash: string) {
   const db = await getDb();
   if (!db) throw new Error('DB unavailable');

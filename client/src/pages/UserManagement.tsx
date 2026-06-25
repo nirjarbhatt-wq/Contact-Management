@@ -40,6 +40,19 @@ export default function UserManagement() {
     onError: (err) => toast.error(err.message),
   });
 
+  const setDeptMutation = trpc.admin.setUserDepartment.useMutation({
+    onSuccess: () => {
+      toast.success("Department updated");
+      utils.admin.listUsers.invalidate();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const DEPARTMENTS = [
+    "Sales", "Marketing", "Engineering", "Operations", "Finance",
+    "HR", "Procurement", "Business Development", "Management", "Other",
+  ];
+
   if (loading || isLoading) {
     return (
       <div className="p-6 space-y-4">
@@ -157,9 +170,22 @@ export default function UserManagement() {
                     </TableCell>
                     <TableCell className="text-muted-foreground">{u.email}</TableCell>
                     <TableCell>
-                      {(u as any).department ? (
-                        <Badge variant="outline" className="text-xs border-slate-500/40 text-slate-300">{(u as any).department}</Badge>
-                      ) : <span className="text-muted-foreground text-sm">—</span>}
+                      <Select
+                        value={(u as any).department ?? ""}
+                        onValueChange={(dept) =>
+                          setDeptMutation.mutate({ userId: u.id, department: dept || null })
+                        }
+                        disabled={setDeptMutation.isPending}
+                      >
+                        <SelectTrigger className="w-40 h-7 text-xs">
+                          <SelectValue placeholder="No dept" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {DEPARTMENTS.map((d) => (
+                            <SelectItem key={d} value={d}>{d}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </TableCell>
                     <TableCell>
                       <Select

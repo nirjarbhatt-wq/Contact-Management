@@ -38,6 +38,7 @@ import {
   insertAuditLog,
   insertContact,
   setUserActive,
+  setUserDepartment,
   setUserRole,
   updateContact,
   upsertUser,
@@ -118,13 +119,17 @@ const contactsRouter = router({
     page: z.number().int().positive().default(1),
     pageSize: z.number().int().positive().max(100).default(20),
     phoneticSearch: z.boolean().optional(),
+    departmentFilter: z.string().optional(), // admin-only explicit department filter
   })).query(async ({ ctx, input }) => {
     const isAdmin = ctx.user.role === "admin";
     const filters = {
       ...input,
       uploadedByUserId: input.myUploadsOnly ? ctx.user.id : undefined,
       // Non-admins only see contacts from their own department
-      department: (!isAdmin && !input.myUploadsOnly) ? (ctx.user.department ?? null) : undefined,
+      // Admins can optionally filter by a specific department via departmentFilter
+      department: isAdmin
+        ? (input.departmentFilter || undefined)
+        : (!input.myUploadsOnly ? (ctx.user.department ?? null) : undefined),
     };
     return getContacts(filters);
   }),
@@ -399,6 +404,20 @@ const adminRouter = router({
         entityType: "user",
         entityId: input.userId,
         details: JSON.stringify({ role: input.role }),
+      });
+      return { success: true };
+    }),
+
+  setUserDepartment: adminProcedure
+    .input(z.object({ userId: z.number().int().positive(), department: z.string().min(1).max(128).nullable() }))
+    .mutation(async ({ ctx, input }) => {
+      await setUserDepartment(input.userId, input.department);
+      await insertAuditLog({
+        userId: ctx.user.id,
+        action: "edit",
+        entityType: "user",
+        entityId: input.userId,
+        details: JSON.stringify({ department: input.department }),
       });
       return { success: true };
     }),

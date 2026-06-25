@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { useMetadata } from "@/hooks/useMetadata";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -41,10 +42,18 @@ function exportToCSV(contacts: any[]) {
   URL.revokeObjectURL(url);
 }
 
+const DEPARTMENTS = [
+  "Sales", "Marketing", "Engineering", "Operations", "Finance",
+  "HR", "Procurement", "Business Development", "Management", "Other",
+];
+
 export default function AllContacts() {
   const metadata = useMetadata();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [search, setSearch] = useState("");
   const [phoneticSearch, setPhoneticSearch] = useState(false);
+  const [departmentFilter, setDepartmentFilter] = useState<string | undefined>(undefined);
   const [filters, setFilters] = useState<{
     regionId?: number; vendorSubcategoryId?: number; clientSubcategoryId?: number;
     consultantSubcategoryId?: number; contactSourceId?: number;
@@ -65,6 +74,7 @@ export default function AllContacts() {
     search: search || undefined,
     phoneticSearch: phoneticSearch && !!search,
     ...filters,
+    departmentFilter: isAdmin ? departmentFilter : undefined,
     page,
     pageSize: 20,
   }, { keepPreviousData: true } as any);
@@ -94,9 +104,9 @@ export default function AllContacts() {
   const contacts = data?.contacts ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / 20);
-  const activeFilterCount = Object.values(filters).filter(Boolean).length;
+  const activeFilterCount = Object.values(filters).filter(Boolean).length + (departmentFilter ? 1 : 0);
 
-  const clearFilters = () => { setFilters({}); setPage(1); };
+  const clearFilters = () => { setFilters({}); setDepartmentFilter(undefined); setPage(1); };
   const setFilter = useCallback((key: string, value: number | undefined) => {
     setFilters(f => ({ ...f, [key]: value }));
     setPage(1);
@@ -227,6 +237,15 @@ export default function AllContacts() {
                   {metadata.contactSources.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
                 </SelectContent>
               </Select>
+              {isAdmin && (
+                <Select value={departmentFilter ?? ""} onValueChange={v => { setDepartmentFilter(v || undefined); setPage(1); }}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Department" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">All Departments</SelectItem>
+                    {DEPARTMENTS.map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           )}
         </CardHeader>
