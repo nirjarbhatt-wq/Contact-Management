@@ -161,34 +161,40 @@ const contactsRouter = router({
     contactSourceId: z.number().int().positive().optional(),
     notes: z.string().optional(),
   }))).mutation(async ({ ctx, input }) => {
-    const ids: number[] = [];
-    for (const c of input) {
-      const id = await insertContact({
-        uploadedByUserId: ctx.user.id,
-        displayName: c.displayName,
-        firstName: c.firstName,
-        lastName: c.lastName,
-        phoneNumbers: c.phoneNumbers ? JSON.stringify(c.phoneNumbers) : undefined,
-        emails: c.emails ? JSON.stringify(c.emails) : undefined,
-        regionId: c.regionId,
-        vendorCategoryId: c.vendorCategoryId,
-        vendorSubcategoryId: c.vendorSubcategoryId,
-        clientCategoryId: c.clientCategoryId,
-        clientSubcategoryId: c.clientSubcategoryId,
-        consultantCategoryId: c.consultantCategoryId,
-        consultantSubcategoryId: c.consultantSubcategoryId,
-        contactSourceId: c.contactSourceId,
-        notes: c.notes,
-      });
-      ids.push(id);
-      await insertAuditLog({
-        userId: ctx.user.id,
-        action: "upload",
-        entityType: "contact",
-        entityId: id,
-        details: JSON.stringify({ displayName: c.displayName }),
-      });
-    }
+    // Insert all contacts in parallel for maximum throughput
+    const ids = await Promise.all(
+      input.map((c) =>
+        insertContact({
+          uploadedByUserId: ctx.user.id,
+          displayName: c.displayName,
+          firstName: c.firstName,
+          lastName: c.lastName,
+          phoneNumbers: c.phoneNumbers ? JSON.stringify(c.phoneNumbers) : undefined,
+          emails: c.emails ? JSON.stringify(c.emails) : undefined,
+          regionId: c.regionId,
+          vendorCategoryId: c.vendorCategoryId,
+          vendorSubcategoryId: c.vendorSubcategoryId,
+          clientCategoryId: c.clientCategoryId,
+          clientSubcategoryId: c.clientSubcategoryId,
+          consultantCategoryId: c.consultantCategoryId,
+          consultantSubcategoryId: c.consultantSubcategoryId,
+          contactSourceId: c.contactSourceId,
+          notes: c.notes,
+        })
+      )
+    );
+    // Fire audit logs in background — do not block the response
+    Promise.all(
+      ids.map((id, i) =>
+        insertAuditLog({
+          userId: ctx.user.id,
+          action: "upload",
+          entityType: "contact",
+          entityId: id,
+          details: JSON.stringify({ displayName: input[i].displayName }),
+        })
+      )
+    ).catch((err) => console.error("[AuditLog] upload batch failed:", err));
     return { uploaded: ids.length, ids };
   }),
 
