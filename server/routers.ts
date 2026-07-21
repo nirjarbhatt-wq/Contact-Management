@@ -200,6 +200,11 @@ const contactsRouter = router({
 
   update: protectedProcedure.input(z.object({
     id: z.number().int().positive(),
+    displayName: z.string().min(1).optional(),
+    firstName: z.string().nullable().optional(),
+    lastName: z.string().nullable().optional(),
+    phoneNumbers: z.array(z.string()).nullable().optional(),
+    emails: z.array(z.string()).nullable().optional(),
     regionId: z.number().int().positive().nullable().optional(),
     vendorCategoryId: z.number().int().positive().nullable().optional(),
     vendorSubcategoryId: z.number().int().positive().nullable().optional(),
@@ -215,7 +220,12 @@ const contactsRouter = router({
     if (existing.uploadedByUserId !== ctx.user.id && ctx.user.role !== "admin") {
       throw new TRPCError({ code: "FORBIDDEN" });
     }
-    const { id, ...data } = input;
+    const { id, phoneNumbers, emails, ...rest } = input;
+    const data = {
+      ...rest,
+      ...(phoneNumbers !== undefined ? { phoneNumbers: phoneNumbers ? JSON.stringify(phoneNumbers) : null } : {}),
+      ...(emails !== undefined ? { emails: emails ? JSON.stringify(emails) : null } : {}),
+    };
     await updateContact(id, data);
     await insertAuditLog({
       userId: ctx.user.id,

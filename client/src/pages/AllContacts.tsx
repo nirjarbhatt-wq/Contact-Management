@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -17,7 +18,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Phone, Mail, Search, Download, Filter, X, Users, ChevronLeft, ChevronRight, Pencil, Trash2, AudioWaveform } from "lucide-react";
+import { Phone, Mail, Search, Download, Filter, X, Users, ChevronLeft, ChevronRight, Pencil, Trash2, AudioWaveform, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 function exportToCSV(contacts: any[]) {
@@ -47,6 +48,38 @@ const DEPARTMENTS = [
   "HR", "Procurement", "Business Development", "Management", "Other",
 ];
 
+type EditState = {
+  id: number;
+  displayName: string;
+  phones: string[];
+  emails: string[];
+  regionId: string;
+  vendorSubcategoryId: string;
+  clientSubcategoryId: string;
+  consultantSubcategoryId: string;
+  contactSourceId: string;
+  notes: string;
+};
+
+function initEditState(c: any): EditState {
+  let phones: string[] = [];
+  let emails: string[] = [];
+  try { phones = JSON.parse(c.phoneNumbers ?? "[]"); } catch { /* ignore */ }
+  try { emails = JSON.parse(c.emails ?? "[]"); } catch { /* ignore */ }
+  return {
+    id: c.id,
+    displayName: c.displayName ?? "",
+    phones: phones.length > 0 ? phones : [""],
+    emails: emails.length > 0 ? emails : [""],
+    regionId: c.regionId?.toString() ?? "",
+    vendorSubcategoryId: c.vendorSubcategoryId?.toString() ?? "",
+    clientSubcategoryId: c.clientSubcategoryId?.toString() ?? "",
+    consultantSubcategoryId: c.consultantSubcategoryId?.toString() ?? "",
+    contactSourceId: c.contactSourceId?.toString() ?? "",
+    notes: c.notes ?? "",
+  };
+}
+
 export default function AllContacts() {
   const metadata = useMetadata();
   const { user } = useAuth();
@@ -68,6 +101,10 @@ export default function AllContacts() {
     vendorSubcategoryId?: number; clientSubcategoryId?: number; consultantSubcategoryId?: number;
   }>({});
 
+  // Edit dialog state
+  const [editContact, setEditContact] = useState<EditState | null>(null);
+  const [deleteContactId, setDeleteContactId] = useState<number | null>(null);
+
   const utils = trpc.useUtils();
 
   const { data, isLoading } = trpc.contacts.list.useQuery({
@@ -78,6 +115,25 @@ export default function AllContacts() {
     page,
     pageSize: 20,
   }, { keepPreviousData: true } as any);
+
+  const updateMutation = trpc.contacts.update.useMutation({
+    onSuccess: () => {
+      toast.success("Contact updated");
+      utils.contacts.list.invalidate();
+      setEditContact(null);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const deleteMutation = trpc.contacts.delete.useMutation({
+    onSuccess: () => {
+      toast.success("Contact deleted");
+      utils.contacts.list.invalidate();
+      utils.reports.dashboard.invalidate();
+      setDeleteContactId(null);
+    },
+    onError: (err) => toast.error(err.message),
+  });
 
   const bulkUpdateMutation = trpc.contacts.bulkUpdate.useMutation({
     onSuccess: (res) => {
@@ -138,6 +194,26 @@ export default function AllContacts() {
     if (bulkEditData.consultantSubcategoryId) payload.consultantSubcategoryId = bulkEditData.consultantSubcategoryId;
     bulkUpdateMutation.mutate(payload);
   };
+
+  const handleSaveEdit = () => {
+    if (!editContact) return;
+    const phones = editContact.phones.map(p => p.trim()).filter(Boolean);
+    const emails = editContact.emails.map(e => e.trim()).filter(Boolean);
+    updateMutation.mutate({
+      id: editContact.id,
+      displayName: editContact.displayName.trim() || undefined,
+      phoneNumbers: phones,
+      emails: emails,
+      regionId: editContact.regionId ? Number(editContact.regionId) : null,
+      vendorSubcategoryId: editContact.vendorSubcategoryId ? Number(editContact.vendorSubcategoryId) : null,
+      clientSubcategoryId: editContact.clientSubcategoryId ? Number(editContact.clientSubcategoryId) : null,
+      consultantSubcategoryId: editContact.consultantSubcategoryId ? Number(editContact.consultantSubcategoryId) : null,
+      contactSourceId: editContact.contactSourceId ? Number(editContact.contactSourceId) : null,
+      notes: editContact.notes || null,
+    });
+  };
+
+  const canEdit = (c: any) => isAdmin || c.uploadedByUserId === user?.id;
 
   return (
     <div className="space-y-5">
@@ -269,12 +345,13 @@ export default function AllContacts() {
                   <TableHead className="text-xs">Consultant</TableHead>
                   <TableHead className="text-xs">Source</TableHead>
                   <TableHead className="text-xs">Uploaded By</TableHead>
+                  <TableHead className="text-xs w-20">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading && Array.from({ length: 8 }).map((_, i) => (
                   <TableRow key={i}>
-                    {Array.from({ length: 9 }).map((_, j) => (
+                    {Array.from({ length: 10 }).map((_, j) => (
                       <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
                     ))}
                   </TableRow>
@@ -300,12 +377,34 @@ export default function AllContacts() {
                       <TableCell className="py-3 text-xs text-muted-foreground">{c.consultantSubcategoryName ?? "—"}</TableCell>
                       <TableCell className="py-3">{c.sourceName ? <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">{c.sourceName}</Badge> : <span className="text-muted-foreground text-xs">—</span>}</TableCell>
                       <TableCell className="py-3 text-xs text-muted-foreground">{c.uploaderName ?? "—"}</TableCell>
+                      <TableCell className="py-3">
+                        <div className="flex items-center gap-1">
+                          {canEdit(c) && (
+                            <Button
+                              size="icon" variant="ghost"
+                              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                              onClick={() => setEditContact(initEditState(c))}
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                          {(isAdmin || c.uploadedByUserId === user?.id) && (
+                            <Button
+                              size="icon" variant="ghost"
+                              className="h-7 w-7 text-muted-foreground hover:text-red-400"
+                              onClick={() => setDeleteContactId(c.id)}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
                     </TableRow>
                   );
                 })}
                 {!isLoading && contacts.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-16">
+                    <TableCell colSpan={10} className="text-center py-16">
                       <Users className="w-10 h-10 text-muted-foreground/30 mx-auto mb-2" />
                       <p className="text-sm text-muted-foreground">No contacts found</p>
                       {activeFilterCount > 0 && <p className="text-xs text-muted-foreground mt-1">Try clearing your filters</p>}
@@ -333,6 +432,197 @@ export default function AllContacts() {
           </div>
         </CardContent>
       </Card>
+
+      {/* ── Edit Contact Dialog ── */}
+      <Dialog open={!!editContact} onOpenChange={(open) => !open && setEditContact(null)}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Contact</DialogTitle>
+          </DialogHeader>
+          {editContact && (
+            <div className="space-y-4 mt-1">
+              {/* Display Name */}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Display Name *</label>
+                <Input
+                  value={editContact.displayName}
+                  onChange={e => setEditContact(s => s ? { ...s, displayName: e.target.value } : s)}
+                  placeholder="Full name or company name"
+                  className="h-9 text-sm"
+                />
+              </div>
+
+              {/* Phone Numbers */}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Phone Numbers</label>
+                <div className="space-y-2">
+                  {editContact.phones.map((ph, i) => (
+                    <div key={i} className="flex gap-2">
+                      <Input
+                        value={ph}
+                        onChange={e => setEditContact(s => {
+                          if (!s) return s;
+                          const phones = [...s.phones];
+                          phones[i] = e.target.value;
+                          return { ...s, phones };
+                        })}
+                        placeholder="+91 98765 43210"
+                        className="h-9 text-sm flex-1"
+                      />
+                      {editContact.phones.length > 1 && (
+                        <Button size="icon" variant="ghost" className="h-9 w-9 shrink-0 text-muted-foreground hover:text-red-400"
+                          onClick={() => setEditContact(s => s ? { ...s, phones: s.phones.filter((_, idx) => idx !== i) } : s)}>
+                          <X className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                  <Button size="sm" variant="ghost" className="gap-1.5 text-xs text-muted-foreground h-8"
+                    onClick={() => setEditContact(s => s ? { ...s, phones: [...s.phones, ""] } : s)}>
+                    <Plus className="w-3 h-3" /> Add phone
+                  </Button>
+                </div>
+              </div>
+
+              {/* Emails */}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Email Addresses</label>
+                <div className="space-y-2">
+                  {editContact.emails.map((em, i) => (
+                    <div key={i} className="flex gap-2">
+                      <Input
+                        value={em}
+                        onChange={e => setEditContact(s => {
+                          if (!s) return s;
+                          const emails = [...s.emails];
+                          emails[i] = e.target.value;
+                          return { ...s, emails };
+                        })}
+                        placeholder="email@example.com"
+                        className="h-9 text-sm flex-1"
+                        type="email"
+                      />
+                      {editContact.emails.length > 1 && (
+                        <Button size="icon" variant="ghost" className="h-9 w-9 shrink-0 text-muted-foreground hover:text-red-400"
+                          onClick={() => setEditContact(s => s ? { ...s, emails: s.emails.filter((_, idx) => idx !== i) } : s)}>
+                          <X className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                  <Button size="sm" variant="ghost" className="gap-1.5 text-xs text-muted-foreground h-8"
+                    onClick={() => setEditContact(s => s ? { ...s, emails: [...s.emails, ""] } : s)}>
+                    <Plus className="w-3 h-3" /> Add email
+                  </Button>
+                </div>
+              </div>
+
+              {/* Region */}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Region</label>
+                <Select value={editContact.regionId} onValueChange={v => setEditContact(s => s ? { ...s, regionId: v } : s)}>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select region" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">None</SelectItem>
+                    {metadata.regions.map(r => <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Vendor Subcategory */}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Vendor Type</label>
+                <Select value={editContact.vendorSubcategoryId} onValueChange={v => setEditContact(s => s ? { ...s, vendorSubcategoryId: v } : s)}>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select vendor type" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">None</SelectItem>
+                    {metadata.vendorSubcategories.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Client Subcategory */}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Client Type</label>
+                <Select value={editContact.clientSubcategoryId} onValueChange={v => setEditContact(s => s ? { ...s, clientSubcategoryId: v } : s)}>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select client type" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">None</SelectItem>
+                    {metadata.clientSubcategories.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Consultant Subcategory */}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Consultant Type</label>
+                <Select value={editContact.consultantSubcategoryId} onValueChange={v => setEditContact(s => s ? { ...s, consultantSubcategoryId: v } : s)}>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select consultant type" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">None</SelectItem>
+                    {metadata.consultantSubcategories.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Source */}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Source</label>
+                <Select value={editContact.contactSourceId} onValueChange={v => setEditContact(s => s ? { ...s, contactSourceId: v } : s)}>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select source" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">None</SelectItem>
+                    {metadata.contactSources.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Notes</label>
+                <Textarea
+                  value={editContact.notes}
+                  onChange={e => setEditContact(s => s ? { ...s, notes: e.target.value } : s)}
+                  placeholder="Any additional notes…"
+                  className="text-sm resize-none"
+                  rows={3}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setEditContact(null)}>Cancel</Button>
+            <Button
+              onClick={handleSaveEdit}
+              disabled={updateMutation.isPending || !editContact?.displayName.trim()}
+              className="bg-indigo-600 hover:bg-indigo-700"
+            >
+              {updateMutation.isPending ? "Saving…" : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Single Delete Confirmation */}
+      <AlertDialog open={deleteContactId !== null} onOpenChange={(open) => !open && setDeleteContactId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this contact?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The contact will be permanently deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteContactId !== null && deleteMutation.mutate({ id: deleteContactId })}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deleteMutation.isPending ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Bulk Edit Dialog */}
       <Dialog open={showBulkEdit} onOpenChange={setShowBulkEdit}>

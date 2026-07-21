@@ -280,6 +280,11 @@ export async function insertContact(data: {
 }
 
 export async function updateContact(id: number, data: Partial<{
+  displayName: string;
+  firstName: string | null;
+  lastName: string | null;
+  phoneNumbers: string | null;
+  emails: string | null;
   regionId: number | null;
   vendorCategoryId: number | null;
   vendorSubcategoryId: number | null;
