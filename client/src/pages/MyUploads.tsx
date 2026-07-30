@@ -151,9 +151,10 @@ function EditDialog({ contact, onClose }: { contact: ContactRow; onClose: () => 
         <div className="space-y-3 py-2">
           <div className="space-y-1.5">
             <Label className="text-xs">Region</Label>
-            <Select value={form.regionId?.toString() ?? ""} onValueChange={v => setForm(f => ({ ...f, regionId: v ? Number(v) : undefined }))}>
+            <Select value={form.regionId?.toString() ?? "__none__"} onValueChange={v => setForm(f => ({ ...f, regionId: v !== "__none__" && v !== "_intl" && v !== "_states" && v !== "_uts" ? Number(v) : undefined }))}>
               <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select region" /></SelectTrigger>
               <SelectContent>
+                <SelectItem value="__none__">— None —</SelectItem>
                 <SelectItem value="_intl" disabled className="text-muted-foreground text-xs">— International —</SelectItem>
                 {regionGroups.international.map(r => <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>)}
                 <SelectItem value="_states" disabled className="text-muted-foreground text-xs">— Indian States —</SelectItem>
@@ -205,12 +206,12 @@ function EditDialog({ contact, onClose }: { contact: ContactRow; onClose: () => 
                   </button>
                 </div>
                 <Select
-                  value={form.subcategoryId?.toString() ?? ""}
-                  onValueChange={v => setForm(f => ({ ...f, subcategoryId: v ? Number(v) : undefined }))}
+                  value={form.subcategoryId?.toString() ?? "__none__"}
+                  onValueChange={v => setForm(f => ({ ...f, subcategoryId: v !== "__none__" ? Number(v) : undefined }))}
                 >
                   <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select sub-category" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">— None —</SelectItem>
+                    <SelectItem value="__none__">— None —</SelectItem>
                     {filteredSubs.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -231,10 +232,10 @@ function EditDialog({ contact, onClose }: { contact: ContactRow; onClose: () => 
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">Source of Contact</Label>
-            <Select value={form.contactSourceId?.toString() ?? ""} onValueChange={v => setForm(f => ({ ...f, contactSourceId: v ? Number(v) : undefined }))}>
+            <Select value={form.contactSourceId?.toString() ?? "__none__"} onValueChange={v => setForm(f => ({ ...f, contactSourceId: v !== "__none__" ? Number(v) : undefined }))}>
               <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select source" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">— None —</SelectItem>
+                <SelectItem value="__none__">— None —</SelectItem>
                 {metadata.contactSources.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
               </SelectContent>
             </Select>
