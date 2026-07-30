@@ -241,13 +241,14 @@ function CategorySubcategorySelector({
             </button>
           </div>
           <Select
-            value={subcategoryId?.toString() ?? ""}
-            onValueChange={v => onChange(selectedCategory, v ? Number(v) : undefined)}
+            value={subcategoryId?.toString() ?? "__none__"}
+            onValueChange={v => onChange(selectedCategory, v !== "__none__" ? Number(v) : undefined)}
           >
             <SelectTrigger className="h-9 text-sm">
               <SelectValue placeholder="Select sub-category" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="__none__">— None —</SelectItem>
               {filteredSubs.length === 0 ? (
                 <div className="px-3 py-2 text-xs text-muted-foreground text-center">
                   No sub-categories yet — click "+ New" to add one
@@ -312,11 +313,12 @@ function MetadataForm({
         <div className="space-y-1.5">
           <Label className="text-xs font-medium">Region</Label>
           <Select
-            value={value.regionId?.toString() ?? ""}
-            onValueChange={v => onChange({ ...value, regionId: v ? Number(v) : undefined })}
+            value={value.regionId?.toString() ?? "__none__"}
+            onValueChange={v => onChange({ ...value, regionId: v !== "__none__" && v !== "_intl_header" && v !== "_states_header" && v !== "_uts_header" ? Number(v) : undefined })}
           >
             <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select region" /></SelectTrigger>
             <SelectContent>
+              <SelectItem value="__none__">— None —</SelectItem>
               <SelectItem value="_intl_header" disabled className="text-muted-foreground text-xs font-semibold">— International —</SelectItem>
               {regionGroups.international.map(r => <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>)}
               <SelectItem value="_states_header" disabled className="text-muted-foreground text-xs font-semibold">— Indian States —</SelectItem>
@@ -343,11 +345,12 @@ function MetadataForm({
         <div className="space-y-1.5">
           <Label className="text-xs font-medium">Source of Contact</Label>
           <Select
-            value={value.contactSourceId?.toString() ?? ""}
-            onValueChange={v => onChange({ ...value, contactSourceId: v ? Number(v) : undefined })}
+            value={value.contactSourceId?.toString() ?? "__none__"}
+            onValueChange={v => onChange({ ...value, contactSourceId: v !== "__none__" ? Number(v) : undefined })}
           >
             <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Select source" /></SelectTrigger>
             <SelectContent>
+              <SelectItem value="__none__">— None —</SelectItem>
               {m.contactSources.map(s => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
             </SelectContent>
           </Select>

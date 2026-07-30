@@ -171,9 +171,9 @@ export default function UserManagement() {
                     <TableCell className="text-muted-foreground">{u.email}</TableCell>
                     <TableCell>
                       <Select
-                        value={(u as any).department ?? ""}
+                        value={(u as any).department ?? "__none__"}
                         onValueChange={(dept) =>
-                          setDeptMutation.mutate({ userId: u.id, department: dept || null })
+                          setDeptMutation.mutate({ userId: u.id, department: dept !== "__none__" ? dept : null })
                         }
                         disabled={setDeptMutation.isPending}
                       >
@@ -181,6 +181,7 @@ export default function UserManagement() {
                           <SelectValue placeholder="No dept" />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="__none__">— No dept —</SelectItem>
                           {DEPARTMENTS.map((d) => (
                             <SelectItem key={d} value={d}>{d}</SelectItem>
                           ))}
